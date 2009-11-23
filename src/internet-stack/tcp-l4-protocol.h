@@ -116,11 +116,13 @@ private:
   Ptr<Node> m_node;
   Ipv4EndPointDemux *m_endPoints;
   ObjectFactory m_rttFactory;
+  ObjectFactory m_sockFactory;
 private:
   friend class TcpSocketImpl;
   void SendPacket (Ptr<Packet>, const TcpHeader &,
                   Ipv4Address, Ipv4Address);
   static ObjectFactory GetDefaultRttEstimatorFactory (void);
+  static ObjectFactory GetDefaultSocketFactory (void);
   TcpL4Protocol (const TcpL4Protocol &o);
   TcpL4Protocol &operator = (const TcpL4Protocol &o);
 

@@ -35,6 +35,7 @@
 #include "ipv4-l3-protocol.h"
 #include "tcp-socket-factory-impl.h"
 #include "tcp-socket-impl.h"
+#include "tcp-newreno.h"
 #include "rtt-estimator.h"
 #include "tcp-typedefs.h"
 
@@ -322,6 +323,14 @@ TcpL4Protocol::GetDefaultRttEstimatorFactory (void)
   return factory;
 }
 
+ObjectFactory
+TcpL4Protocol::GetDefaultSocketFactory (void)
+{
+  ObjectFactory factory;
+  factory.SetTypeId (TcpNewReno::GetTypeId ());
+  return factory;
+}
+
 TypeId 
 TcpL4Protocol::GetTypeId (void)
 {
@@ -332,6 +341,11 @@ TcpL4Protocol::GetTypeId (void)
                    "How RttEstimator objects are created.",
                    ObjectFactoryValue (GetDefaultRttEstimatorFactory ()),
                    MakeObjectFactoryAccessor (&TcpL4Protocol::m_rttFactory),
+                   MakeObjectFactoryChecker ())
+    .AddAttribute ("SocketFactory",
+                   "How TcpSocketImpl objects are created.",
+                   ObjectFactoryValue (GetDefaultSocketFactory ()),
+                   MakeObjectFactoryAccessor (&TcpL4Protocol::m_sockFactory),
                    MakeObjectFactoryChecker ())
     .AddAttribute ("SocketList", "The list of sockets associated to this protocol.",
                    ObjectVectorValue (),
@@ -417,7 +431,7 @@ TcpL4Protocol::CreateSocket (void)
 {
   NS_LOG_FUNCTION_NOARGS ();
   Ptr<RttEstimator> rtt = m_rttFactory.Create<RttEstimator> ();
-  Ptr<TcpSocketImpl> socket = CreateObject<TcpSocketImpl> ();
+  Ptr<TcpSocketImpl> socket = m_sockFactory.Create<TcpSocketImpl> ();
   socket->SetNode (m_node);
   socket->SetTcp (this);
   socket->SetRtt (rtt);
