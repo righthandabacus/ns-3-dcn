@@ -29,6 +29,7 @@ all_modules = (
     'applications/udp-echo',
     'routing/nix-vector-routing',
     'routing/olsr',
+    'routing/hash-routing',
     'routing/global-routing',
     'routing/static-routing',
     'routing/list-routing',

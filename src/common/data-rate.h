@@ -89,6 +89,9 @@ public:
   bool operator >= (const DataRate& rhs) const;
   bool operator == (const DataRate& rhs) const;
   bool operator != (const DataRate& rhs) const;
+
+  DataRate& operator /=(const double& c);
+  DataRate& operator +=(const DataRate& r);
   
   /**
    * \brief Calculate transmission time
@@ -127,6 +130,14 @@ ATTRIBUTE_HELPER_HEADER (DataRate);
  */
 double operator*(const DataRate& lhs, const TimeUnit<1>& rhs);
 double operator*(const TimeUnit<1>& lhs, const DataRate& rhs);
+
+DataRate operator*(const double& c, const DataRate& d);
+DataRate operator*(const DataRate& d, const double& c);
+
+DataRate operator/(const DataRate& d, const double& c);
+double operator/(const DataRate& lhs, const DataRate& rhs);
+
+DataRate operator+(const DataRate& lhs, const DataRate& rhs);
 
 } //namespace ns3
 
