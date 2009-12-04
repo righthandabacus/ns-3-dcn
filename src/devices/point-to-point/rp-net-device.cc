@@ -21,6 +21,7 @@
 
 #define __STDC_LIMIT_MACROS 1
 #include <stdint.h>
+#include <limits>
 
 #include "ns3/log.h"
 #include "ns3/uinteger.h"
@@ -154,7 +155,7 @@ RpNetDevice::DequeueAndTransmit()
 	// Water-filling method: Calculate the required credits to send a
 	// packet. Packets from different queues are sent using deficit
 	// round robin.
-	double creditsDue = UINT32_MAX;
+	double creditsDue = std::numeric_limits<double>::infinity();
 	unsigned qIndex = m_lastQ;
 	Time t = Simulator::GetMaximumSimulationTime();
 	for (unsigned i=0; i<qCnt; i++) {
@@ -163,15 +164,20 @@ RpNetDevice::DequeueAndTransmit()
 		// Skip this queue if it is unable to send packet
 		if (m_paused[qIndex] && m_qbbEnabled) continue;
 		if (m_queue[qIndex]->GetNPackets() == 0) continue;
+		NS_LOG_LOGIC("Good queue "<< qIndex << " avail at " << m_nextAvail[qIndex] << " t=" << t);
+		// Lazy initialization
+		if (m_rate[qIndex] == 0) m_rate[qIndex] = m_bps;
 		// Do the water filling method to find the credits due
 		t = Min(m_nextAvail[qIndex], t);
+		NS_LOG_LOGIC("t=" << t);
 		if (m_nextAvail[qIndex] <= Simulator::Now()) {
 			uint32_t pktSize = m_queue[qIndex]->Peek()->GetSize();
 			creditsDue = std::min(m_bps/m_rate[qIndex] * (pktSize-m_credits[qIndex]), creditsDue);
 		};
 	};
+	NS_LOG_LOGIC("Credits due = " << creditsDue);
 	// If nothing to send, reschedule DequeueAndTransmit()
-	if (creditsDue == UINT32_MAX) {
+	if (creditsDue == std::numeric_limits<double>::infinity()) {
 		NS_LOG_LOGIC("Nothing to send");
 		if (m_nextSend.IsExpired()) {
 			if (t > Simulator::Now()) {
@@ -205,18 +211,19 @@ RpNetDevice::DequeueAndTransmit()
 		c.d = m_credits[qIndex];
 		c.l++;
 		if (pktSize > c.d) continue;
-		// Credit is enough, dequeue, update state variables
+		// Credit is enough, dequeue
 		packet = m_queue[qIndex]->Dequeue();
 		m_credits[qIndex] = 0;
+		m_lastQ = qIndex;
+		// Update state variables if necessary
+		if (m_rate[qIndex] == m_bps) continue;
 		m_txBytes[qIndex] -= pktSize;
 		NS_LOG_INFO("txCount for flow "<< qIndex <<" is "<< m_txBytes[qIndex]);
 		Time nextSend = m_tInterframeGap + Seconds(m_bps.CalculateTxTime(creditsDue));
 		m_nextAvail[qIndex] = Simulator::Now() + nextSend;
-		NS_LOG_LOGIC("Dequeued from throttled queue "<< qIndex <<" of rate "<< m_rate[qIndex]
+		NS_LOG_LOGIC("Dequeued from queue "<< qIndex <<" of rate "<< m_rate[qIndex]
 					<<", next send at "<< m_nextAvail[qIndex].GetSeconds());
-		m_lastQ = qIndex;
 		// If we have sent enough bytes from this queue, increase the rate
-		if (m_rate[qIndex] == m_bps) continue;
 		while (m_timer[qIndex] <= Simulator::Now()) {
 			m_timeCount[qIndex] ++;
 			m_timer[qIndex] += Seconds(UniformVariable(0.85,1.15).GetValue() * ((m_timeCount[qIndex]>FAST_RECOVERY_TH)?0.5:1) * TIMER_PERIOD);

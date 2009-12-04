@@ -32,6 +32,8 @@ namespace ns3 {
 class QbbNetDevice : public PointToPointNetDevice 
 {
 public:
+  static const unsigned qCnt = 8;	// Number of queues/priorities used
+
   static TypeId GetTypeId (void);
 
   QbbNetDevice ();
@@ -86,8 +88,6 @@ protected:
 
   /// Given a flow id, produce a hash value so that a flow can be classified into a priority
   static uint64_t Hash(const flowid& f);
-
-  static const unsigned qCnt = 8;	// Number of queues/priorities used
 
   /**
    * The queues for each priority class.

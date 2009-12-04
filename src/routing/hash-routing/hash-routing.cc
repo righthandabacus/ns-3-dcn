@@ -185,13 +185,14 @@ HashRouting::RouteInput  (Ptr<const Packet> p, const Ipv4Header &header, Ptr<con
 	// Hash-routing is for unicast destination only
 	if (a.IsMulticast() || a.IsBroadcast()) {
 		NS_LOG_LOGIC("Non-unicast destination is not supported");
-		return 0;
+		return false;
 	};
 
 	// Check if the destination is local
 	if (IsLocal(a)) {
 		NS_LOG_LOGIC ("local destination- calling local callback");
 		lcb (p, header, iif);
+		return true;
 	};
 	// Check if input device supports IP forwarding
 	if (m_ipv4->IsForwarding (iif) == false) {

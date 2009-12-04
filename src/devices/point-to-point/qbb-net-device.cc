@@ -41,6 +41,7 @@ QbbNetDevice::GetTypeId (void)
 {
 	static TypeId tid = TypeId ("ns3::QbbNetDevice")
 	 .SetParent<PointToPointNetDevice> ()
+	 .AddConstructor<QbbNetDevice> ()
 	 .AddAttribute ("QbbEnabled",
 			"Enable the generation of PAUSE packet.",
 			BooleanValue (true),
@@ -56,7 +57,7 @@ QbbNetDevice::GetTypeId (void)
 			UintegerValue (300),
 			MakeUintegerAccessor (&QbbNetDevice::m_pausetime),
 			MakeUintegerChecker<uint32_t> ())
-	 .AddAttribute ("TxQList",
+	 .AddAttribute ("TxQ",
 			"The list of Tx queues for different priority classes",
 			ObjectVectorValue (),
 			MakeObjectVectorAccessor (&QbbNetDevice::m_queue),
@@ -245,7 +246,7 @@ QbbNetDevice::CheckQueueFull(unsigned qIndex)
 		p->AddHeader(pauseh);
 		Ipv4Header ipv4h;  // Prepare IPv4 header
 		ipv4h.SetProtocol(0xFE);
-		ipv4h.SetSource(m_node->GetObject<Ipv4>()->GetAddress(m_ifIndex+1,0).GetLocal());
+		ipv4h.SetSource(m_node->GetObject<Ipv4>()->GetAddress(m_ifIndex,0).GetLocal());
 		ipv4h.SetDestination(Ipv4Address("255.255.255.255"));
 		ipv4h.SetTtl(1); 
 		ipv4h.SetIdentification(UniformVariable(0,65536).GetValue());

@@ -91,7 +91,7 @@ CpNetDevice::Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNumb
 	Ipv4Header ipv4h;
 	p->PeekHeader(ipv4h);
 	Ipv4Address sAddr = ipv4h.GetSource();
-	Ipv4Address myAddr = m_node->GetObject<Ipv4>()->GetAddress(m_ifIndex+1,0).GetLocal();
+	Ipv4Address myAddr = m_node->GetObject<Ipv4>()->GetAddress(m_ifIndex,0).GetLocal();
 	flowid fid = flowid(p);
 	// Sanity check: I don't generate CN to myself and no CN for CN
 	if (myAddr != sAddr && ipv4h.GetProtocol() < 0xFE) {
