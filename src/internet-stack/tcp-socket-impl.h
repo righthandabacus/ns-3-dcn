@@ -1,6 +1,8 @@
+/* vim: set cin ts=4 sw=4 syn=cpp ru nu cuc cul lbr: */
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2007 Georgia Tech Research Corporation
+ * Copyright (c) 2009 Adrian Sai-wah Tam
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +18,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Raj Bhattacharjea <raj.b@gatech.edu>
+ *         Adrian Sai-wah Tam <adrian.sw.tam@gmail.com>
  */
 #ifndef TCP_SOCKET_IMPL_H
 #define TCP_SOCKET_IMPL_H
@@ -29,8 +32,8 @@
 #include "ns3/ipv4-address.h"
 #include "ns3/event-id.h"
 #include "tcp-typedefs.h"
-#include "pending-data.h"
-#include "sequence-number.h"
+#include "tcp-tx-buffer.h"
+#include "tcp-rx-buffer.h"
 #include "rtt-estimator.h"
 
 
@@ -48,198 +51,148 @@ class TcpHeader;
  *
  * \brief An implementation of a stream socket using TCP.
  *
- * This class contains an implementation of TCP Tahoe, as well as a sockets
- * interface for talking to TCP.  Features include connection orientation,
- * reliability through cumulative acknowledgements, congestion and flow 
- * control.  Finite send buffer semantics are modeled, but as of yet, finite
- * receive buffer modelling is unimplemented.
- *
- * The closedown of these sockets is as of yet not compliant with the relevent
- * RFCs, i.e. the FIN handshaking isn't correct.  While this is visible at the
- * PCAP tracing level, it has no effect on the statistics users are interested
- * in, i.e. throughput, delay, etc. of actual payload data.
- *
- * Asynchronous callbacks to provide notifications to higher layers that a 
- * protocol event has occured, such as space freeing up in the send buffer
- * or new data arriving in the receive buffer.
+ * This class contains an RFC793 implementation of TCP, as well as a sockets
+ * interface for talking to TCP.  This serves as a base for other TCP functions
+ * where the sliding window mechanism is handled here.  This class provides
+ * connection orientation and sliding window flow control.
  */
 class TcpSocketImpl : public TcpSocket
 {
 public:
-  static TypeId GetTypeId (void);
-  /**
-   * Create an unbound tcp socket.
-   */
-  TcpSocketImpl ();
-  TcpSocketImpl (const TcpSocketImpl& sock);
-  virtual ~TcpSocketImpl ();
+	static TypeId GetTypeId (void);
+	/**
+	 * Create an unbound tcp socket.
+	 */
+	TcpSocketImpl ();
+	TcpSocketImpl (const TcpSocketImpl& sock);
+	virtual ~TcpSocketImpl ();
 
-  void SetNode (Ptr<Node> node);
-  void SetTcp (Ptr<TcpL4Protocol> tcp);
-  void SetRtt (Ptr<RttEstimator> rtt);
+	// Set associated Node, TcpL4Protocol, RttEstimator to this socket
+	virtual void SetNode (Ptr<Node> node);
+	virtual void SetTcp (Ptr<TcpL4Protocol> tcp);
+	virtual void SetRtt (Ptr<RttEstimator> rtt);
 
-  virtual enum SocketErrno GetErrno (void) const;
-  virtual Ptr<Node> GetNode (void) const;
-  virtual int Bind (void);
-  virtual int Bind (const Address &address);
-  virtual int Close (void);
-  virtual int ShutdownSend (void);
-  virtual int ShutdownRecv (void);
-  virtual int Connect(const Address &address);
-  virtual int Listen(void);
-  virtual uint32_t GetTxAvailable (void) const;
-  virtual int Send (Ptr<Packet> p, uint32_t flags);
-  virtual int SendTo(Ptr<Packet> p, uint32_t flags, const Address &toAddress);
-  virtual uint32_t GetRxAvailable (void) const;
-  virtual Ptr<Packet> Recv (uint32_t maxSize, uint32_t flags);
-  virtual Ptr<Packet> RecvFrom (uint32_t maxSize, uint32_t flags,
-    Address &fromAddress);
-  virtual int GetSockName (Address &address) const; 
+	// Necessary implementations of null functions from ns3::Socket
+	virtual enum SocketErrno GetErrno (void) const;	// returns m_errno
+	virtual Ptr<Node> GetNode (void) const;	// returns m_node
+	virtual int Bind (void);	// Bind a socket by setting up endpoint in TcpL4Protocol
+	virtual int Bind (const Address &address);	// ... endpoint of specific addr or port
+	virtual int Close (void);	// Close by app: Kill socket upon tx buffer emptied
+	virtual int ShutdownSend (void);	// Assert the m_shutdownSend flag to prevent send to network
+	virtual int ShutdownRecv (void);	// Assert the m_shutdownRecv flag to prevent forward to app
+	virtual int Connect(const Address &address); // Setup endpoint and call ProcessAction() to connect
+	virtual int Listen(void); // Verify the socket is in a correct state and call ProcessAction() to listen
+	virtual int Send (Ptr<Packet> p, uint32_t flags); // Call by app to send data to network
+	virtual int SendTo(Ptr<Packet> p, uint32_t flags, const Address &toAddress); // Same as Send(), toAddress is insignificant
+	virtual uint32_t GetTxAvailable (void) const; // Available Tx buffer size
+	virtual uint32_t GetRxAvailable (void) const; // Available-to-read data size, i.e. value of m_rxAvailable
+	virtual Ptr<Packet> Recv (uint32_t maxSize, uint32_t flags); // Return a packet to be forwarded to app
+	virtual Ptr<Packet> RecvFrom (uint32_t maxSize, uint32_t flags, Address &fromAddress); // ... and write the remote address at fromAddress
+	virtual int GetSockName (Address &address) const; // Return local addr:port in address
 
-private:
-  friend class Tcp;
-  // invoked by Tcp class
-  int FinishBind (void);
-  void ForwardUp (Ptr<Packet> p, Ipv4Address ipv4, uint16_t port);
-  void Destroy (void);
-  int DoSendTo (Ptr<Packet> p, const Address &daddr);
-  int DoSendTo (Ptr<Packet> p, Ipv4Address daddr, uint16_t dport);
-  void SendEmptyPacket(uint8_t flags);
-  void SendRST();
-  
-  //methods for state
-  bool ProcessAction (Actions_t a);
-  bool ProcessAction (Actions_t a, const TcpHeader& tcpHeader,
-                      Ipv4Address saddr, Ipv4Address daddr);
-  bool ProcessPacketAction (Actions_t a, Ptr<Packet> p,
-                                       const TcpHeader& tcpHeader,
-                                       const Address& fromAddress);
-  Actions_t ProcessEvent (Events_t e);
-  bool SendPendingData(bool withAck = false);
-  void CompleteFork(Ptr<Packet>, const TcpHeader&, const Address& fromAddress);
-  void ConnectionSucceeded();
-  
-  //methods for window management
-  virtual uint32_t  UnAckDataCount(); // Return count of number of unacked bytes
-  virtual uint32_t  BytesInFlight();  // Return total bytes in flight
-  virtual uint32_t  Window();         // Return window size (integer)
-  virtual uint32_t  AvailableWindow();// Return unfilled portion of window
+protected:
+	// Helper functions
+	int CommonBind (void); // Common part of the two Bind(), i.e. set callback and remembering local addr:port
+	void ForwardUp (Ptr<Packet> p, Ipv4Address ipv4, uint16_t port); // For L3 protocol to send back the received pkt
+	void Destroy (void); // Kill this socket by zeroing its attributes
+	void SendEmptyPacket(uint8_t flags); // Send a empty packet that carries a flag, e.g. ACK
+	void SendRST(); // Send reset and tear down this socket
+	int SetupEndpoint(); // Configure m_endpoint for local addr for given remote addr
+	void CompleteFork(Ptr<Packet>, const TcpHeader&, const Address& fromAddress);
+	void ConnectionSucceeded(); // Schedule-friendly wrapper for Socket::NotifyConnectionSucceeded()
+	bool SendPendingData(bool withAck = false);
 
-  //methods for Rx buffer management
-  uint32_t RxBufferFreeSpace();
-  uint16_t AdvertisedWindowSize();
+	// State transition functions
+	Actions_t ProcessEvent (Events_t e); // Given an event happened, check current state, tell corr. actions
+	bool ProcessAction (Actions_t a); // Action handlers
+	bool ProcessPacketAction (Actions_t a, Ptr<Packet> p, const TcpHeader& tcpHeader, const Address& fromAddress);
 
-  // Manage data tx/rx
-  void NewRx (Ptr<Packet>, const TcpHeader&, const Address&);
-  void RxBufFinishInsert (SequenceNumber);
-  Ptr<TcpSocketImpl> Copy ();
-  virtual void NewAck (SequenceNumber seq); 
-  virtual void DupAck (const TcpHeader& t, uint32_t count); 
-  virtual void ReTxTimeout ();
-  void DelAckTimeout ();
-  void LastAckTimeout ();
-  void PersistTimeout ();
-  void Retransmit ();
-  void CommonNewAck (SequenceNumber seq, bool skipTimer = false);
-  // All timers are cancelled when the endpoint is deleted, to insure
-  // we don't have additional activity
-  void CancelAllTimers();
-  // attribute related
-  virtual void SetSndBufSize (uint32_t size);
-  virtual uint32_t GetSndBufSize (void) const;
-  virtual void SetRcvBufSize (uint32_t size);
-  virtual uint32_t GetRcvBufSize (void) const;
-  virtual void SetSegSize (uint32_t size);
-  virtual uint32_t GetSegSize (void) const;
-  virtual void SetSSThresh (uint32_t threshold);
-  virtual uint32_t GetSSThresh (void) const;
-  virtual void SetInitialCwnd (uint32_t cwnd);
-  virtual uint32_t GetInitialCwnd (void) const;
-  virtual void SetConnTimeout (Time timeout);
-  virtual Time GetConnTimeout (void) const;
-  virtual void SetConnCount (uint32_t count);
-  virtual uint32_t GetConnCount (void) const;
-  virtual void SetDelAckTimeout (Time timeout);
-  virtual Time GetDelAckTimeout (void) const;
-  virtual void SetDelAckMaxCount (uint32_t count);
-  virtual uint32_t GetDelAckMaxCount (void) const;
+	// Window management
+	virtual uint32_t UnAckDataCount(); // Return count of number of unacked bytes
+	virtual uint32_t BytesInFlight();  // Return total bytes in flight
+	virtual uint32_t Window();         // Return the max possible number of unacked bytes
+	virtual uint32_t AvailableWindow();// Return unfilled portion of window
+	virtual uint16_t AdvertisedWindowSize(); // The amount of Rx window announced to the peer
 
-  bool m_skipRetxResched;
-  uint32_t m_dupAckCount;
-  EventId m_retxEvent;
-  EventId m_lastAckEvent;
+	// Manage data tx/rx
+	virtual void NewRx (Ptr<Packet>, const TcpHeader&, const Address&);	// Recv of a data, put into buffer, call L7 to get it if necessary
+	virtual Ptr<TcpSocketImpl> Fork () = 0; // Call CopyObject<> to clone me
+	virtual void NewAck (SequenceNumber const& seq, bool skipTimer = false); // Update buffers corr. to ACK
+	virtual void DupAck (const TcpHeader& t, uint32_t count) = 0;
+	virtual void ReTxTimeout (); // Halving cwnd and call Retransmit()
+	virtual void DelAckTimeout ();  // Action upon delay ACK timeout, i.e. send an ACK
+	virtual void LastAckTimeout (); // Timeout at LAST_ACK, close the connection
+	virtual void PersistTimeout (); // Send 1 byte probe to get an updated window size
+	void Retransmit (); // Retransmit the oldest packet
+	// All timers are cancelled when the endpoint is deleted, to insure
+	// we don't have additional activity
+	void CancelAllTimers();
 
-  EventId m_delAckEvent;
-  uint32_t m_delAckCount;
-  uint32_t m_delAckMaxCount;
-  Time m_delAckTimeout;
+	// Implementing ns3::TcpSocket -- Attribute get/set
+	virtual void     SetSndBufSize (uint32_t size);
+	virtual uint32_t GetSndBufSize (void) const;
+	virtual void     SetRcvBufSize (uint32_t size);
+	virtual uint32_t GetRcvBufSize (void) const;
+	virtual void     SetSegSize (uint32_t size);
+	virtual uint32_t GetSegSize (void) const;
+	virtual void     SetSSThresh (uint32_t threshold) = 0;
+	virtual uint32_t GetSSThresh (void) const = 0;
+	virtual void     SetInitialCwnd (uint32_t cwnd) = 0;
+	virtual uint32_t GetInitialCwnd (void) const = 0;
+	virtual void     SetConnTimeout (Time timeout);
+	virtual Time     GetConnTimeout (void) const;
+	virtual void     SetConnCount (uint32_t count);
+	virtual uint32_t GetConnCount (void) const;
+	virtual void     SetDelAckTimeout (Time timeout);
+	virtual Time     GetDelAckTimeout (void) const;
+	virtual void     SetDelAckMaxCount (uint32_t count);
+	virtual uint32_t GetDelAckMaxCount (void) const;
 
-  Ipv4EndPoint *m_endPoint;
-  Ptr<Node> m_node;
-  Ptr<TcpL4Protocol> m_tcp;
-  Ipv4Address m_remoteAddress;
-  uint16_t m_remotePort;
-  //these two are so that the socket/endpoint cloning works
-  Ipv4Address m_localAddress;
-  uint16_t m_localPort;
-  enum SocketErrno m_errno;
-  bool m_shutdownSend;
-  bool m_shutdownRecv;
-  bool m_connected;
-  
-  //manage the state infomation
-  States_t m_state;
-  bool m_closeNotified;
-  bool m_closeRequestNotified;
-  bool m_closeOnEmpty;
-  bool m_pendingClose;
+protected:	// TCP variables
+	// Counters and events
+	EventId  m_retxEvent;       //< Retransmission event
+	EventId  m_lastAckEvent;    //< Last ACK timeout event
+	EventId  m_delAckEvent;     //< Delayed ACK timeout event
+	EventId  m_persistEvent;    //< Persist event: Send 1-byte probe
+	uint32_t m_dupAckCount;     //< Dupack counter
+	uint32_t m_delAckCount;     //< Delayed ACK counter
+	uint32_t m_delAckMaxCount;  //< Number of packet to fire an ACK before delay timeout
+	uint32_t m_cnCount;         //< Count of remaining connection retries
+	Time     m_delAckTimeout;   //< Time to delay an ACK
+	Time     m_persistTime;     //< Time between sending 1-byte probes
+	Time     m_cnTimeout;       //< Timeout for connection retry
 
-  
-  //sequence info, sender side
-  SequenceNumber m_nextTxSequence;
-  SequenceNumber m_highTxMark;
-  SequenceNumber m_highestRxAck;
-  SequenceNumber m_lastRxAck;
-  
-  //sequence info, reciever side
-  SequenceNumber m_nextRxSequence; //next expected sequence
+	// Connections to other layers of TCP/IP
+	Ipv4EndPoint       *m_endPoint;
+	Ptr<Node>           m_node;
+	Ptr<TcpL4Protocol>  m_tcp;
+	Ipv4Address         m_remoteAddress;
+	uint16_t            m_remotePort;
+	Ipv4Address         m_localAddress;
+	uint16_t            m_localPort;
 
-  //Rx buffer
-  UnAckData_t m_bufferedData; //buffer which sorts out of sequence data
-  //Rx buffer state
-  uint32_t m_rxAvailable; // amount of data available for reading through Recv
-  uint32_t m_rxBufSize; //size in bytes of the data in the rx buf
-  //note that these two are not the same: rxAvailbale is the number of
-  //contiguous sequenced bytes that can be read, rxBufSize is the TOTAL size
-  //including out of sequence data, such that m_rxAvailable <= m_rxBufSize
+	// Round trip time estimation
+	Ptr<RttEstimator> m_rtt;
 
-  //this is kind of the tx buffer
-  PendingData* m_pendingData;
-  SequenceNumber m_firstPendingSequence;
+	// Rx and Tx buffer management
+	SequenceNumber m_nextTxSequence; // Next seqno to be sent, ReTx pushes it back
+	SequenceNumber m_highTxMark;     // Highest seqno ever sent, regardless of ReTx
+	TcpRxBuffer    m_rxBuffer;       // Rx buffer (reordering buffer)
+	TcpTxBuffer    m_txBuffer;       // Tx buffer
 
-  // Window management
-  uint32_t                       m_segmentSize;          //SegmentSize
-  uint32_t                       m_rxWindowSize;         //Flow control window
-  TracedValue<uint32_t>          m_cWnd;                 //Congestion window
-  uint32_t                       m_ssThresh;             //Slow Start Threshold
-  uint32_t                       m_initialCWnd;          //Initial cWnd value
+	// State-related attributes
+	States_t          m_state;         // TCP state
+	enum SocketErrno  m_errno;         // Socket error code
+	bool              m_closeNotified; // Told app to close socket
+	bool              m_closeOnEmpty;  // Close socket upon tx buffer emptied
+	bool              m_pendingClose;  // Close socket once all packets rx in sequence
+	bool              m_shutdownSend;  //< Send no longer allowed
+	bool              m_shutdownRecv;  //< Receive no longer allowed
+	bool              m_connected;     //< Connection established
 
-  //persist timer management
-  Time                           m_persistTime;
-  EventId                        m_persistEvent;
-  
-
-  // Round trip time estimation
-  Ptr<RttEstimator> m_rtt;
-  Time m_lastMeasuredRtt;
-
-  // Timer-related members
-  Time              m_cnTimeout; 
-  uint32_t          m_cnCount;
-
-  // Attributes
-  uint32_t m_sndBufSize;   // buffer limit for the outgoing queue
-  uint32_t m_rxBufMaxSize;   // maximum receive socket buffer size
+	// Window management
+	uint32_t               m_segmentSize;  //SegmentSize
+	uint32_t               m_rxWindowSize; //Flow control window at remote side
 };
 
 }//namespace ns3

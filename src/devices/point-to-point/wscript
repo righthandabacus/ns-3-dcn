@@ -8,6 +8,12 @@ def build(bld):
         'point-to-point-channel.cc',
         'point-to-point-test.cc',
         'ppp-header.cc',
+        'qbb-net-device.cc',
+        'cp-net-device.cc',
+        'rp-net-device.cc',
+        'cn-header.cc',
+        'pause-header.cc',
+        'infinite-queue.cc',
         ]
     headers = bld.new_task_gen('ns3header')
     headers.module = 'point-to-point'
@@ -15,5 +21,11 @@ def build(bld):
         'point-to-point-net-device.h',
         'point-to-point-channel.h',
         'ppp-header.h',
+        'qbb-net-device.h',
+        'cp-net-device.h',
+        'rp-net-device.h',
+        'cn-header.h',
+        'pause-header.h',
+        'infinite-queue.h',
         ]
 

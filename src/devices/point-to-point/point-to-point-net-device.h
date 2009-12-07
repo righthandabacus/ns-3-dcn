@@ -129,7 +129,7 @@ public:
    * @see PointToPointChannel
    * @param p Ptr to the received packet.
    */
-  void Receive (Ptr<Packet> p);
+  virtual void Receive (Ptr<Packet> p);
 
   /**
    * Set The max frame size of packets sent over this device.
@@ -257,7 +257,7 @@ public:
   virtual void SetPromiscReceiveCallback (PromiscReceiveCallback cb);
   virtual bool SupportsSendFrom (void) const;
 
-private:
+protected:
 
   virtual void DoDispose (void);
 
@@ -271,7 +271,7 @@ private:
    */
   Ptr<Queue> GetQueue(void) const; 
 
-private:
+protected:
   /**
    * Calculate the value for the MTU that would result from 
    * setting the frame size to the given value.
@@ -333,7 +333,7 @@ private:
    * The TransmitComplete method is used internally to finish the process
    * of sending a packet out on the channel.
    */
-  void TransmitComplete(void);
+  virtual void TransmitComplete(void);
 
   void NotifyLinkUp (void);
 
