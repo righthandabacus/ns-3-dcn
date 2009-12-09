@@ -396,7 +396,7 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 		if (m_blocking) {
 			Ptr<NetDevice> nd = route->GetOutputDevice();
 			Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
-			if (qbb != 0 && qbb->GetTxAvailable() > p->GetSize()) {
+			if (qbb != 0 && qbb->GetTxAvailable() < p->GetSize()) {
 				NS_LOG_LOGIC("NetDevice buffer full. Not sending.");
 				qbb->ConnectWithoutContext(
 						MakeCallback(&UdpSocketImpl::DeviceUnblocked, this));
@@ -428,7 +428,7 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 		if (m_blocking) {
 			Ptr<NetDevice> nd = route->GetOutputDevice();
 			Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
-			if (qbb != 0 && qbb->GetTxAvailable() > p->GetSize()) {
+			if (qbb != 0 && qbb->GetTxAvailable() < p->GetSize()) {
 				NS_LOG_LOGIC("NetDevice buffer full. Not sending.");
 				qbb->ConnectWithoutContext(
 						MakeCallback(&UdpSocketImpl::DeviceUnblocked, this));

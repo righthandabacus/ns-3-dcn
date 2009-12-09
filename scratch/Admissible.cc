@@ -40,6 +40,7 @@ int main (int argc, char *argv[])
 {
 	// Turn on logging
 //	LogComponentEnable("SimulationScript", LOG_LEVEL_ALL);
+	LogComponentEnable("MmppApplication", LOG_LEVEL_ALL);
 	LogComponentEnableAll(LOG_PREFIX_TIME);
 	LogComponentEnableAll(LOG_PREFIX_FUNC);
 //	LogComponentPrintList();
@@ -77,9 +78,10 @@ int main (int argc, char *argv[])
 	Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue(1000));
 	Config::SetDefault ("ns3::RpNetDevice::BC", UintegerValue(bc));
 	Config::SetDefault ("ns3::QbbNetDevice::PauseTime", UintegerValue(pausetime));
+	Config::SetDefault ("ns3::QbbNetDevice::BufferSize", UintegerValue(131072));	// 128KiB
 	Config::SetDefault ("ns3::RpNetDevice::MinRate", DataRateValue(DataRate("1Mbps")));
 	Config::SetDefault ("ns3::CpNetDevice::SpeedUp", UintegerValue(speedup));
-	if (!rr) Config::SetDefault ("ns3::HashRoute::RoutingTable::EnableReroute", BooleanValue(false));
+	if (!rr) Config::SetDefault ("ns3::HashRouting::EnableReroute", BooleanValue(false));
 
 	// Build the fat tree network
 	Ptr<FatTreeHelper> fattree = CreateObject<FatTreeHelper>(size);

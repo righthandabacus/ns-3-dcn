@@ -96,8 +96,8 @@ public:
    * \param index the index of the requested NetDevice
    * \returns the requested NetDevice associated to this Node.
    *
-   * The indexes used by the GetDevice method start at one and
-   * end at GetNDevices ()
+   * The indexes used by the GetDevice method start at 0 (loopback) and
+   * end at GetNDevices () - 1
    */
   Ptr<NetDevice> GetDevice (uint32_t index) const;
   /**

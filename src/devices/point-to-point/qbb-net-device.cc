@@ -262,7 +262,7 @@ QbbNetDevice::CheckQueueFull(unsigned qIndex)
 		p->AddHeader(ipv4h);
 		// Loop through every net device and send
 		Ptr<Ipv4> m_ipv4 = m_node->GetObject<Ipv4>();
-		for(uint32_t i=m_node->GetNDevices(); i>0; i--) {
+		for(uint32_t i=m_node->GetNDevices()-1; i>0; i--) {
 			Ptr<NetDevice> device = m_ipv4->GetNetDevice(i);
 			if (device == this) {
 				continue;

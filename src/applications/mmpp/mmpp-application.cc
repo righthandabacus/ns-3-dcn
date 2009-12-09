@@ -94,12 +94,12 @@ MmppApplication::MmppApplication () :
 	m_socket(0),
 	m_totBytes(0)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 }
 
 MmppApplication::~MmppApplication()
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 }
 
 void 
@@ -113,7 +113,7 @@ MmppApplication::SetMaxBytes(uint32_t maxBytes)
 void
 MmppApplication::DoDispose (void)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 
 	m_socket = 0;
 	// chain up
@@ -123,7 +123,7 @@ MmppApplication::DoDispose (void)
 // Application Methods
 void MmppApplication::StartApplication() // Called at time specified by Start
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 
 	// Create the socket if not already
 	if (!m_socket) {
@@ -160,7 +160,7 @@ void MmppApplication::StartApplication() // Called at time specified by Start
 
 void MmppApplication::StopApplication() // Called at time specified by Stop
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 
 	CancelEvents ();
 	if(m_socket != 0) {
@@ -172,7 +172,7 @@ void MmppApplication::StopApplication() // Called at time specified by Stop
 
 void MmppApplication::CancelEvents ()
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	Simulator::Cancel(m_sendEvent);
 	Simulator::Cancel(m_stateEvent);
 }
@@ -180,7 +180,7 @@ void MmppApplication::CancelEvents ()
 // Private helpers
 void MmppApplication::ScheduleNextTx()
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 
 	if (m_maxBytes == 0 || m_totBytes < m_maxBytes) {
 		double PoissonRate = static_cast<double>((*m_rate)[m_state].GetBitRate());
@@ -190,14 +190,14 @@ void MmppApplication::ScheduleNextTx()
 			m_sendEvent = Simulator::Schedule(nextTx, &MmppApplication::SendPacket, this);
 		};
 	} else { // All done, cancel any pending events
-		NS_LOG_LOGIC ("m_totBytes >= m_maxBytes");
+		NS_LOG_LOGIC ("m_totBytes >= m_maxBytes. Application closed.");
 		StopApplication();
 	}
 }
 
 void MmppApplication::ScheduleNextTransition()
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 
 	Time nextTransition(Seconds(ExponentialVariable(-1/static_cast<double>((*m_matrix)[m_state][m_state])).GetValue()));
 	NS_LOG_LOGIC ("nextTransition = " << nextTransition);
@@ -206,35 +206,48 @@ void MmppApplication::ScheduleNextTransition()
 
 void MmppApplication::ResumeSend(Ptr<Socket> sock, uint32_t txAvail)
 {
-	uint32_t size = std::min(m_pendingBytes, txAvail);
-	if (size == 0) {
+	NS_LOG_FUNCTION(this << sock << txAvail);
+	if (m_pendingPkts.size() == 0 || m_pendingPkts.front()->GetSize() > txAvail) {
 		return;
 	};
-	Ptr<Packet> packet = Create<Packet> (size);
-	if (m_socket->Send (packet) >= 0) {
-		m_totBytes += size;
-		m_pendingBytes -= size;
+
+	// ScheduleNow to prevent a huge calling stack build up
+	Simulator::ScheduleNow(&MmppApplication::SendPendingPacket, this);
+}
+
+void MmppApplication::SendPendingPacket()
+{
+	while (m_pendingPkts.size()) {
+		Ptr<Packet> packet = m_pendingPkts.front();
+		if (m_socket->Send (packet) == 0) {
+			return;
+		};
+		m_txTrace (packet);
+		m_totBytes += packet->GetSize();
+		m_pendingPkts.pop_front();
+		NS_LOG_LOGIC ("Send resumed. Pending pkts =" << m_pendingPkts.size());
 	};
 }
 	
 void MmppApplication::SendPacket()
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	NS_ASSERT (m_sendEvent.IsExpired ());
 	NS_LOG_LOGIC ("sending packet at " << Simulator::Now());
 	Ptr<Packet> packet = Create<Packet> ((*m_pktSize)[m_state]);
-	m_txTrace (packet);
 	if (m_socket->Send (packet) >= 0) {
+		m_txTrace (packet);
 		m_totBytes += (*m_pktSize)[m_state];
 	} else {
-		m_pendingBytes += (*m_pktSize)[m_state];
+		m_pendingPkts.push_back(packet);
+		NS_LOG_LOGIC ("Send blocked. Wait for notification. Pending pkts =" << m_pendingPkts.size());
 	};
 	ScheduleNextTx();
 }
 
 void MmppApplication::StateChange()
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	NS_ASSERT (m_stateEvent.IsExpired ());
 	if ((*m_matrix)[m_state][m_state] == 0) {
 		return;	// We're in a got-stuck state

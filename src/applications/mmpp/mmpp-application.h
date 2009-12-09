@@ -99,6 +99,7 @@ public:
 protected:
 	virtual void DoDispose (void);
 	void ResumeSend(Ptr<Socket> sock, uint32_t txAvail);
+	void SendPendingPacket();
 private:
 	// inherited from Application base class.
 	virtual void StartApplication (void);    // Called at time specified by Start
@@ -116,9 +117,9 @@ private:
 	uint32_t        m_state;        // Current state of the Markov chain
 	Ptr<Socket>     m_socket;       // Associated socket
 	uint32_t        m_totBytes;     // Total bytes sent so far
-	uint32_t        m_pendingBytes; // Total bytes blocked by the socket
 	EventId         m_stateEvent;   // Event Id for next Markov state transition event
 	EventId         m_sendEvent;    // Event Id of pending "send packet" event
+	std::list<Ptr<Packet> > m_pendingPkts;	// Pending packets
 
 	// for trace
 	TracedCallback<Ptr<const Packet> > m_txTrace;
