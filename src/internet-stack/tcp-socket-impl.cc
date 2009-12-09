@@ -56,6 +56,11 @@ TcpSocketImpl::GetTypeId ()
 {
 	static TypeId tid = TypeId("ns3::TcpSocketImpl")
 		.SetParent<TcpSocket> ()
+		.AddAttribute ("Blocking",
+			"Set the socket's send function blocking",
+			BooleanValue (false),
+			MakeBooleanAccessor (&TcpSocketImpl::m_blocking),
+			MakeBooleanChecker ())
 		;
 	return tid;
 }
@@ -391,6 +396,7 @@ TcpSocketImpl::RecvFrom (uint32_t maxSize, uint32_t flags, Address &fromAddress)
 		// remote address to fromAddress
 		SocketAddressTag tag;
 		bool found = packet->PeekPacketTag (tag);
+		found = found;
 		NS_ASSERT (found);
 		fromAddress = tag.GetAddress ();
 	}
@@ -570,6 +576,15 @@ void TcpSocketImpl::ConnectionSucceeded()
 	NotifyConnectionSucceeded();
 }
 
+void TcpSocketImpl::DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail)
+{
+	Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
+	if (qbb->GetTxAvailable() >= m_segmentSize) {
+		qbb->DisconnectWithoutContext(MakeCallback(&TcpSocketImpl::DeviceUnblocked, this));
+		SendPendingData(m_connected);
+	};
+};
+
 // Send as much pending data as possible according to the Tx window. Note that
 // this function did not implement the PSH flag
 bool TcpSocketImpl::SendPendingData (bool withAck)
@@ -597,6 +612,23 @@ bool TcpSocketImpl::SendPendingData (bool withAck)
 		if (w < m_segmentSize && m_txBuffer.SizeFromSeq (m_nextTxSequence) > w) {
 			break; // No more
 		}
+		// Check if we need to wait for netdevice buffer
+		if (m_blocking) {
+			// Assumed we called SetupEndPoint, now we get the route to destination
+			Ptr<Ipv4RoutingProtocol> rp = m_node->GetObject<Ipv4>()->GetRoutingProtocol();
+			Ipv4Header header;
+			header.SetDestination (m_remoteAddress);
+			Socket::SocketErrno errno_;
+			Ptr<Ipv4Route> route = m_node->GetObject<Ipv4>()->GetRoutingProtocol ()->RouteOutput (Ptr<Packet> (), header, 0, errno_);
+			// From the route, get the netdevice
+			Ptr<NetDevice> nd = route->GetOutputDevice();
+			Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
+			if (qbb != 0 && qbb->GetTxAvailable() < m_segmentSize) {
+				NS_LOG_LOGIC("NetDevice buffer full. Not sending.");
+				qbb->ConnectWithoutContext(MakeCallback(&TcpSocketImpl::DeviceUnblocked, this));
+				break;
+			};
+		};
 		uint32_t s = std::min (w, m_segmentSize);  // Send no more than window
 		Ptr<Packet> p = m_txBuffer.CopyFromSeq (s, m_nextTxSequence);
 		NS_LOG_LOGIC("TcpSocketImpl " << this << " SendPendingData"

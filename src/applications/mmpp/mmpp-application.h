@@ -98,6 +98,7 @@ public:
 	//void SetParameters(GenMatrix* m, vector<DataRate>* r, vector<uint32_t>* s) { m_matrix=m; m_rate=r; m_pktSize=s; };
 protected:
 	virtual void DoDispose (void);
+	void ResumeSend(Ptr<Socket> sock, uint32_t txAvail);
 private:
 	// inherited from Application base class.
 	virtual void StartApplication (void);    // Called at time specified by Start
@@ -115,6 +116,7 @@ private:
 	uint32_t        m_state;        // Current state of the Markov chain
 	Ptr<Socket>     m_socket;       // Associated socket
 	uint32_t        m_totBytes;     // Total bytes sent so far
+	uint32_t        m_pendingBytes; // Total bytes blocked by the socket
 	EventId         m_stateEvent;   // Event Id for next Markov state transition event
 	EventId         m_sendEvent;    // Event Id of pending "send packet" event
 

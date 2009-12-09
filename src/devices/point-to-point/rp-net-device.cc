@@ -215,6 +215,9 @@ RpNetDevice::DequeueAndTransmit()
 		packet = m_queue[qIndex]->Dequeue();
 		m_credits[qIndex] = 0;
 		m_lastQ = qIndex;
+		m_bufferUsage -= packet->GetSize();
+		uint32_t avail = GetTxAvailable();
+		if (avail) m_sendCb(this, avail);
 		// Update state variables if necessary
 		if (m_rate[qIndex] == m_bps) continue;
 		m_txBytes[qIndex] -= pktSize;

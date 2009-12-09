@@ -61,6 +61,19 @@ public:
    */
   virtual bool Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNumber);
 
+  /**
+   * Get the size of Tx buffer available in the device
+   *
+   * @return buffer available in bytes
+   */
+  virtual uint32_t GetTxAvailable(void) const;
+
+  /**
+   * TracedCallback hooks
+   */
+  void ConnectWithoutContext(const CallbackBase& callback);
+  void DisconnectWithoutContext(const CallbackBase& callback);
+
 protected:
   virtual void DoDispose(void);
 
@@ -96,9 +109,13 @@ protected:
    */
   std::vector<Ptr<Queue> > m_queue;
 
+  TracedCallback<Ptr<NetDevice>, uint32_t> m_sendCb;	//< Callback chain for notifying Tx buffer available
+
   bool m_qbbEnabled;	//< Qbb behaviour enabled
   uint32_t m_threshold;	//< Threshold for generating Pause
   uint32_t m_pausetime;	//< Time for each Pause
+  uint32_t m_buffersize;//< Total size of Tx buffer
+  uint32_t m_bufferUsage;	//< Occupancy at the buffer
   bool m_paused[qCnt];	//< Whether a queue paused
   unsigned m_lastQ;	//< Last accessed queue
   EventId m_resumeEvt[qCnt];  //< Keeping the next resume event

@@ -36,6 +36,7 @@
 #include "ns3/nstime.h"
 #include "ns3/data-rate.h"
 #include "ns3/uinteger.h"
+#include "ns3/boolean.h"
 
 NS_LOG_COMPONENT_DEFINE ("MmppApplication");
 
@@ -127,8 +128,10 @@ void MmppApplication::StartApplication() // Called at time specified by Start
 	// Create the socket if not already
 	if (!m_socket) {
 		m_socket = Socket::CreateSocket (GetNode(), m_tid);
+		m_socket->SetAttribute("Blocking", BooleanValue(true));
 		m_socket->Bind ();
 		m_socket->Connect (m_peer);
+		m_socket->SetSendCallback(MakeCallback(&MmppApplication::ResumeSend,this));
 	}
 	// Insure no pending event
 	CancelEvents ();
@@ -200,6 +203,19 @@ void MmppApplication::ScheduleNextTransition()
 	NS_LOG_LOGIC ("nextTransition = " << nextTransition);
 	m_stateEvent = Simulator::Schedule(nextTransition, &MmppApplication::StateChange, this);
 }
+
+void MmppApplication::ResumeSend(Ptr<Socket> sock, uint32_t txAvail)
+{
+	uint32_t size = std::min(m_pendingBytes, txAvail);
+	if (size == 0) {
+		return;
+	};
+	Ptr<Packet> packet = Create<Packet> (size);
+	if (m_socket->Send (packet) >= 0) {
+		m_totBytes += size;
+		m_pendingBytes -= size;
+	};
+}
 	
 void MmppApplication::SendPacket()
 {
@@ -208,8 +224,11 @@ void MmppApplication::SendPacket()
 	NS_LOG_LOGIC ("sending packet at " << Simulator::Now());
 	Ptr<Packet> packet = Create<Packet> ((*m_pktSize)[m_state]);
 	m_txTrace (packet);
-	m_socket->Send (packet);
-	m_totBytes += (*m_pktSize)[m_state];
+	if (m_socket->Send (packet) >= 0) {
+		m_totBytes += (*m_pktSize)[m_state];
+	} else {
+		m_pendingBytes += (*m_pktSize)[m_state];
+	};
 	ScheduleNextTx();
 }
 

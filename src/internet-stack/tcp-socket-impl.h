@@ -35,6 +35,7 @@
 #include "tcp-tx-buffer.h"
 #include "tcp-rx-buffer.h"
 #include "rtt-estimator.h"
+#include "ns3/qbb-net-device.h"
 
 
 namespace ns3 {
@@ -100,6 +101,7 @@ protected:
 	int SetupEndpoint(); // Configure m_endpoint for local addr for given remote addr
 	void CompleteFork(Ptr<Packet>, const TcpHeader&, const Address& fromAddress);
 	void ConnectionSucceeded(); // Schedule-friendly wrapper for Socket::NotifyConnectionSucceeded()
+	void DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail); // To be called by the QbbNetDevice upon tx buffer available again
 	bool SendPendingData(bool withAck = false);
 
 	// State transition functions
@@ -189,6 +191,7 @@ protected:	// TCP variables
 	bool              m_shutdownSend;  //< Send no longer allowed
 	bool              m_shutdownRecv;  //< Receive no longer allowed
 	bool              m_connected;     //< Connection established
+	bool              m_blocking;      //< Blocking send calls
 
 	// Window management
 	uint32_t               m_segmentSize;  //SegmentSize

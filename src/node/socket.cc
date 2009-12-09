@@ -270,7 +270,14 @@ Socket::NotifySend (uint32_t spaceAvailable)
   NS_LOG_FUNCTION_NOARGS ();
   if (!m_sendCb.IsNull ())
     {
-      m_sendCb (this, spaceAvailable);
+      if (spaceAvailable)
+        {
+          m_sendCb (this, spaceAvailable);
+        }
+      else
+        {
+          m_sendCb (this, GetTxAvailable());
+        }
     }
 }
 

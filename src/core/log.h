@@ -398,13 +398,13 @@ public:
 #define NS_LOG_LOGIC(msg)
 #define NS_LOG_UNCOND(msg)
 
-#define LogComponentPrintList
+#define LogComponentPrintList()
 #define LogRegisterTimePrinter(printer)
 
 #define LogSetTimePrinter(printer)
-#define LogGetTimePrinter
+#define LogGetTimePrinter()
 #define LogSetNodePrinter(printer)
-#define LogGetNodePrinter
+#define LogGetNodePrinter()
 
 #endif /* LOG_ENABLE */
 

@@ -27,6 +27,7 @@
 #include "ns3/ipv4-routing-protocol.h"
 #include "ns3/udp-socket-factory.h"
 #include "ns3/trace-source-accessor.h"
+#include "ns3/boolean.h"
 #include "udp-socket-impl.h"
 #include "udp-l4-protocol.h"
 #include "ipv4-end-point.h"
@@ -51,6 +52,11 @@ UdpSocketImpl::GetTypeId (void)
                    CallbackValue (),
                    MakeCallbackAccessor (&UdpSocketImpl::m_icmpCallback),
                    MakeCallbackChecker ())
+    .AddAttribute ("Blocking",
+                   "Set the socket's send function blocking",
+                   BooleanValue (false),
+                   MakeBooleanAccessor (&UdpSocketImpl::m_blocking),
+                   MakeBooleanChecker ())
     ;
   return tid;
 }
@@ -295,153 +301,161 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, const Address &address)
 int
 UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 {
-  NS_LOG_FUNCTION (this << p << dest << port);
+	NS_LOG_FUNCTION (this << p << dest << port);
 
-  if (m_endPoint == 0)
-    {
-      if (Bind () == -1)
-	{
-          NS_ASSERT (m_endPoint == 0);
-	  return -1;
+	if (m_endPoint == 0) {
+		if (Bind () == -1) {
+			NS_ASSERT (m_endPoint == 0);
+			return -1;
+		}
+		NS_ASSERT (m_endPoint != 0);
 	}
-      NS_ASSERT (m_endPoint != 0);
-    }
-  if (m_shutdownSend)
-    {
-      m_errno = ERROR_SHUTDOWN;
-      return -1;
-    }
+	if (m_shutdownSend) {
+		m_errno = ERROR_SHUTDOWN;
+		return -1;
+	}
 
-  if (p->GetSize () > GetTxAvailable () )
-    {
-      m_errno = ERROR_MSGSIZE;
-      return -1;
-    }
+	if (p->GetSize () > GetTxAvailable () ) {
+		m_errno = ERROR_MSGSIZE;
+		return -1;
+	}
 
-  Ptr<Ipv4> ipv4 = m_node->GetObject<Ipv4> ();
+	Ptr<Ipv4> ipv4 = m_node->GetObject<Ipv4> ();
 
-  // Locally override the IP TTL for this socket
-  // We cannot directly modify the TTL at this stage, so we set a Packet tag
-  // The destination can be either multicast, unicast/anycast, or
-  // either all-hosts broadcast or limited (subnet-directed) broadcast.
-  // For the latter two broadcast types, the TTL will later be set to one
-  // irrespective of what is set in these socket options.  So, this tagging  
-  // may end up setting the TTL of a limited broadcast packet to be
-  // the same as a unicast, but it will be fixed further down the stack
-  if (m_ipMulticastTtl != 0 && dest.IsMulticast ())
-    {
-      SocketIpTtlTag tag;
-      tag.SetTtl (m_ipMulticastTtl);
-      p->AddPacketTag (tag);
-    }
-  else if (m_ipTtl != 0 && !dest.IsMulticast () && !dest.IsBroadcast ())
-    {
-      SocketIpTtlTag tag;
-      tag.SetTtl (m_ipTtl);
-      p->AddPacketTag (tag);
-    }
-  {
-    SocketSetDontFragmentTag tag;
-    bool found = p->RemovePacketTag (tag);
-    if (!found)
-      {
-        if (m_mtuDiscover)
-          {
-            tag.Enable ();
-          }
-        else
-          {
-            tag.Disable ();
-          }
-        p->AddPacketTag (tag);
-      }
-  }
-  //
-  // If dest is set to the limited broadcast address (all ones),
-  // convert it to send a copy of the packet out of every 
-  // interface as a subnet-directed broadcast.
-  // Exception:  if the interface has a /32 address, there is no
-  // valid subnet-directed broadcast, so send it as limited broadcast
-  // Note also that some systems will only send limited broadcast packets
-  // out of the "default" interface; here we send it out all interfaces
-  //
-  if (dest.IsBroadcast ())
-    {
-      NS_LOG_LOGIC ("Limited broadcast start.");
-      for (uint32_t i = 0; i < ipv4->GetNInterfaces (); i++ )
-        {
-          // Get the primary address
-          Ipv4InterfaceAddress iaddr = ipv4->GetAddress (i, 0);
-          Ipv4Address addri = iaddr.GetLocal ();
-          if (addri == Ipv4Address ("127.0.0.1"))
-            continue;
-          Ipv4Mask maski = iaddr.GetMask ();
-          if (maski == Ipv4Mask::GetOnes ())
-            {
-              // if the network mask is 255.255.255.255, do not convert dest
-              NS_LOG_LOGIC ("Sending one copy from " << addri << " to " << dest
-                            << " (mask is " << maski << ")");
-              m_udp->Send (p->Copy (), addri, dest,
-                           m_endPoint->GetLocalPort (), port);
-              NotifyDataSent (p->GetSize ());
-              NotifySend (GetTxAvailable ());
-            }
-          else
-            {
-              // Convert to subnet-directed broadcast
-              Ipv4Address bcast = addri.GetSubnetDirectedBroadcast (maski);
-              NS_LOG_LOGIC ("Sending one copy from " << addri << " to " << bcast
-                            << " (mask is " << maski << ")");
-              m_udp->Send (p->Copy (), addri, bcast,
-                           m_endPoint->GetLocalPort (), port);
-              NotifyDataSent (p->GetSize ());
-              NotifySend (GetTxAvailable ());
-            }
-        }
-      NS_LOG_LOGIC ("Limited broadcast end.");
-      return p->GetSize();
-    }
-  else if (m_endPoint->GetLocalAddress() != Ipv4Address::GetAny())
-    {
-      m_udp->Send(p->Copy (), m_endPoint->GetLocalAddress(), dest,
-                  m_endPoint->GetLocalPort(), port, 0);
-    }
-  else if (ipv4->GetRoutingProtocol () != 0)
-    {
-      Ipv4Header header;
-      header.SetDestination (dest);
-      header.SetProtocol (UdpL4Protocol::PROT_NUMBER);
-      Socket::SocketErrno errno_;
-      Ptr<Ipv4Route> route;
-      uint32_t oif = 0; //specify non-zero if bound to a source address
-      // TBD-- we could cache the route and just check its validity
-      route = ipv4->GetRoutingProtocol ()->RouteOutput (p, header, oif, errno_); 
-      if (route != 0)
-        {
-          NS_LOG_LOGIC ("Route exists");
-          header.SetSource (route->GetSource ());
-          m_udp->Send (p->Copy (), header.GetSource (), header.GetDestination (),
-                       m_endPoint->GetLocalPort (), port, route);
-          NotifyDataSent (p->GetSize ());
-          return p->GetSize();
-        }
-      else 
-        {
-          NS_LOG_LOGIC ("No route to destination");
-          NS_LOG_ERROR (errno_);
-          m_errno = errno_;
-          return -1;
-        }
-    }
-  else
-   {
-      NS_LOG_ERROR ("ERROR_NOROUTETOHOST");
-      m_errno = ERROR_NOROUTETOHOST;
-      return -1;
-   }
-
-  return 0;
+	// Locally override the IP TTL for this socket
+	// We cannot directly modify the TTL at this stage, so we set a Packet tag
+	// The destination can be either multicast, unicast/anycast, or
+	// either all-hosts broadcast or limited (subnet-directed) broadcast.
+	// For the latter two broadcast types, the TTL will later be set to one
+	// irrespective of what is set in these socket options.  So, this tagging  
+	// may end up setting the TTL of a limited broadcast packet to be
+	// the same as a unicast, but it will be fixed further down the stack
+	if (m_ipMulticastTtl != 0 && dest.IsMulticast ()) {
+		SocketIpTtlTag tag;
+		tag.SetTtl (m_ipMulticastTtl);
+		p->AddPacketTag (tag);
+	} else if (m_ipTtl != 0 && !dest.IsMulticast () && !dest.IsBroadcast ()) {
+		SocketIpTtlTag tag;
+		tag.SetTtl (m_ipTtl);
+		p->AddPacketTag (tag);
+	}
+	{
+	SocketSetDontFragmentTag tag;
+	bool found = p->RemovePacketTag (tag);
+	if (!found) {
+		if (m_mtuDiscover) {
+			tag.Enable ();
+		} else {
+			tag.Disable ();
+		}
+		p->AddPacketTag (tag);
+	}
+	}
+	//
+	// If dest is set to the limited broadcast address (all ones),
+	// convert it to send a copy of the packet out of every 
+	// interface as a subnet-directed broadcast.
+	// Exception:  if the interface has a /32 address, there is no
+	// valid subnet-directed broadcast, so send it as limited broadcast
+	// Note also that some systems will only send limited broadcast packets
+	// out of the "default" interface; here we send it out all interfaces
+	//
+	if (dest.IsBroadcast ()) {
+		NS_LOG_LOGIC ("Limited broadcast start.");
+		for (uint32_t i = 0; i < ipv4->GetNInterfaces (); i++ ) {
+			// Get the primary address
+			Ipv4InterfaceAddress iaddr = ipv4->GetAddress (i, 0);
+			Ipv4Address addri = iaddr.GetLocal ();
+			if (addri == Ipv4Address ("127.0.0.1")) continue;
+			Ipv4Mask maski = iaddr.GetMask ();
+			if (maski == Ipv4Mask::GetOnes ()) {
+				// if the network mask is 255.255.255.255, do not convert dest
+				NS_LOG_LOGIC ("Sending one copy from " << addri << " to " << dest
+						<< " (mask is " << maski << ")");
+				m_udp->Send (p->Copy (), addri, dest, m_endPoint->GetLocalPort (), port);
+				NotifyDataSent (p->GetSize ());
+				NotifySend (GetTxAvailable ());
+			} else {
+				// Convert to subnet-directed broadcast
+				Ipv4Address bcast = addri.GetSubnetDirectedBroadcast (maski);
+				NS_LOG_LOGIC ("Sending one copy from " << addri << " to " << bcast
+						<< " (mask is " << maski << ")");
+				m_udp->Send (p->Copy (), addri, bcast, m_endPoint->GetLocalPort (), port);
+				NotifyDataSent (p->GetSize ());
+				NotifySend (GetTxAvailable ());
+			}
+		}
+		NS_LOG_LOGIC ("Limited broadcast end.");
+		return p->GetSize();
+	} else if (m_endPoint->GetLocalAddress() != Ipv4Address::GetAny()) {
+		Ipv4Header header;
+		header.SetDestination (dest);
+		header.SetProtocol (UdpL4Protocol::PROT_NUMBER);
+		Socket::SocketErrno errno_;
+		Ptr<Ipv4Route> route = ipv4->GetRoutingProtocol ()->RouteOutput (p, header, 0, errno_); 
+		if (m_blocking) {
+			Ptr<NetDevice> nd = route->GetOutputDevice();
+			Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
+			if (qbb != 0 && qbb->GetTxAvailable() > p->GetSize()) {
+				NS_LOG_LOGIC("NetDevice buffer full. Not sending.");
+				qbb->ConnectWithoutContext(
+						MakeCallback(&UdpSocketImpl::DeviceUnblocked, this));
+				m_errno = ERROR_MSGSIZE;
+				return -1;
+			};
+		};
+		m_udp->Send(p->Copy (), m_endPoint->GetLocalAddress(), dest,
+				m_endPoint->GetLocalPort(), port, 0);
+		NotifyDataSent (p->GetSize ());
+		NotifySend (GetTxAvailable ());
+		return p->GetSize();
+	} else if (ipv4->GetRoutingProtocol () != 0) {
+		Ipv4Header header;
+		header.SetDestination (dest);
+		header.SetProtocol (UdpL4Protocol::PROT_NUMBER);
+		Socket::SocketErrno errno_;
+		uint32_t oif = 0; //specify non-zero if bound to a source address
+		// TBD-- we could cache the route and just check its validity
+		Ptr<Ipv4Route> route = ipv4->GetRoutingProtocol ()->RouteOutput (p, header, oif, errno_); 
+		if (route == 0) {
+			NS_LOG_LOGIC ("No route to destination");
+			NS_LOG_ERROR (errno_);
+			m_errno = errno_;
+			return -1;
+		}
+		NS_LOG_LOGIC ("Route exists");
+		header.SetSource (route->GetSource ());
+		if (m_blocking) {
+			Ptr<NetDevice> nd = route->GetOutputDevice();
+			Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
+			if (qbb != 0 && qbb->GetTxAvailable() > p->GetSize()) {
+				NS_LOG_LOGIC("NetDevice buffer full. Not sending.");
+				qbb->ConnectWithoutContext(
+						MakeCallback(&UdpSocketImpl::DeviceUnblocked, this));
+				m_errno = ERROR_MSGSIZE;
+				return -1;
+			};
+		};
+		m_udp->Send (p->Copy (), header.GetSource (), header.GetDestination (),
+				m_endPoint->GetLocalPort (), port, route);
+		NotifyDataSent (p->GetSize ());
+		NotifySend (GetTxAvailable ());
+		return p->GetSize();
+	} else {
+		NS_LOG_ERROR ("ERROR_NOROUTETOHOST");
+		m_errno = ERROR_NOROUTETOHOST;
+		return -1;
+	}
+	return 0;
 }
+
+void UdpSocketImpl::DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail)
+{
+	avail = nd->GetObject<QbbNetDevice>()->GetTxAvailable();
+	if (avail) {
+		NotifySend (avail);
+	};
+};
 
 // XXX maximum message size for UDP broadcast is limited by MTU
 // size of underlying link; we are not checking that now.

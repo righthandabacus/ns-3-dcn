@@ -57,6 +57,11 @@ QbbNetDevice::GetTypeId (void)
 			UintegerValue (300),
 			MakeUintegerAccessor (&QbbNetDevice::m_pausetime),
 			MakeUintegerChecker<uint32_t> ())
+	 .AddAttribute ("BufferSize",
+			"Size of Tx buffer in number of bytes, shared by all queues",
+			UintegerValue (UINT32_MAX),
+			MakeUintegerAccessor (&QbbNetDevice::m_buffersize),
+			MakeUintegerChecker<uint32_t> ())
 	 .AddAttribute ("TxQ",
 			"The list of Tx queues for different priority classes",
 			ObjectVectorValue (),
@@ -67,7 +72,7 @@ QbbNetDevice::GetTypeId (void)
 }
 
 
-QbbNetDevice::QbbNetDevice () 
+QbbNetDevice::QbbNetDevice () : m_bufferUsage(0)
 {
 	NS_LOG_FUNCTION (this);
 
@@ -128,6 +133,9 @@ QbbNetDevice::DequeueAndTransmit (void)
 			m_promiscSnifferTrace (p);
 			TransmitStart(p);
 			m_lastQ = qIndex;
+			m_bufferUsage -= p->GetSize();
+			uint32_t avail = GetTxAvailable();
+			if (avail) m_sendCb(this, avail);
 			return;
 		};
 	};
@@ -226,6 +234,7 @@ QbbNetDevice::Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNum
 	AddHeader(packet, protocolNumber);
 	m_macTxTrace (packet);
 	m_queue[qIndex]->Enqueue(packet);
+	m_bufferUsage += packet->GetSize();
 	DequeueAndTransmit();
 	if (m_qbbEnabled && IsLocal(h.GetSource())==false) {
 		CheckQueueFull(qIndex);
@@ -297,6 +306,24 @@ QbbNetDevice::Hash(const flowid& f)
 		val |= b[i] ^ b[15-i];
 	};
 	return val;
+};
+
+uint32_t
+QbbNetDevice::GetTxAvailable(void) const
+{
+	return (m_bufferUsage > m_buffersize) ? 0 : (m_buffersize - m_bufferUsage);
+};
+
+void
+QbbNetDevice::ConnectWithoutContext(const CallbackBase& callback)
+{
+	m_sendCb.ConnectWithoutContext(callback);
+};
+
+void
+QbbNetDevice::DisconnectWithoutContext(const CallbackBase& callback)
+{
+	m_sendCb.DisconnectWithoutContext(callback);
 };
 
 } // namespace ns3

@@ -29,6 +29,7 @@
 #include "ns3/ipv4-address.h"
 #include "ns3/udp-socket.h"
 #include "icmpv4.h"
+#include "ns3/qbb-net-device.h"
 
 namespace ns3 {
 
@@ -78,7 +79,7 @@ public:
   virtual int MulticastJoinGroup (uint32_t interfaceIndex, const Address &groupAddress);
   virtual int MulticastLeaveGroup (uint32_t interfaceIndex, const Address &groupAddress);
 
-private:
+protected:
   // Attributes set through UdpSocket base class 
   virtual void SetRcvBufSize (uint32_t size);
   virtual uint32_t GetRcvBufSize (void) const;
@@ -96,6 +97,7 @@ private:
 
   friend class UdpSocketFactory;
   // invoked by Udp class
+  void DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail); // To be called by the QbbNetDevice upon tx buffer available again
   int FinishBind (void);
   void ForwardUp (Ptr<Packet> p, Ipv4Address ipv4, uint16_t port);
   void Destroy (void);
@@ -128,6 +130,7 @@ private:
   int32_t m_ipMulticastIf;
   bool m_ipMulticastLoop;
   bool m_mtuDiscover;
+  bool m_blocking;
   Callback<void, Ipv4Address,uint8_t,uint8_t,uint8_t,uint32_t> m_icmpCallback;
 };
 
