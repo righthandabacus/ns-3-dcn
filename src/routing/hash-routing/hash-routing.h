@@ -21,6 +21,7 @@
 #define HASH_ROUTING_H
 
 #include <list>
+#include <set>
 #include <stdint.h>
 #include "ns3/ipv4-address.h"
 #include "ns3/ptr.h"
@@ -74,6 +75,7 @@ public:
 	flowid fid;
 	Time last;
 	uint32_t count;
+	std::set<uint32_t> congPoints;
 };
 
 typedef std::list<Ptr<CongRecord> > CongRecordTable;
@@ -163,9 +165,10 @@ protected:
 	 * Check if rerouting shall be triggered for a flow
 	 *
 	 * \param fid	The flow id as five tuple
+	 * \param cp    The IP address of the congestion point
 	 * \return true if the flow shall be rerouted, false otherwise
 	 */
-	bool NeedReroute(const flowid& fid);
+	bool NeedReroute(const flowid& fid, uint32_t cp);
 
 	/*
 	 * Reroute a flow by adding/modifying an entry in the flow table
@@ -175,6 +178,10 @@ protected:
 	 * \return New outgoing port number
 	 */
 	uint32_t Reroute(const flowid& fid, uint32_t oldPort);
+
+	/* Rerouting using the congestion information assisted algorithm
+	 */
+	uint32_t IntelRoute(const flowid& fid);
 
 	/*
 	 * Clean up everything to make this object virtually dead
@@ -188,6 +195,7 @@ protected:
 	CongRecordTable m_congRecord;
   
 	Ptr<Ipv4> m_ipv4;	// Hook to the Ipv4 object of this node
+	bool m_intelRR;		// Intelligent reroute
 	bool m_enableRR;	// Enable reroute
 	uint32_t m_rrThresh;	// CN threshold for reroute
 	Time m_lifetime;	// Lifetime of a CN record

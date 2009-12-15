@@ -75,7 +75,7 @@ int main (int argc, char *argv[])
 	cmd.AddValue("pt","Pause duration in microseconds",pausetime);
 	cmd.Parse (argc, argv);
 
-	Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue(1000));
+	Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue(1460));
 	Config::SetDefault ("ns3::RpNetDevice::BC", UintegerValue(bc));
 	Config::SetDefault ("ns3::QbbNetDevice::PauseTime", UintegerValue(pausetime));
 	Config::SetDefault ("ns3::QbbNetDevice::BufferSize", UintegerValue(131072));	// 128KiB

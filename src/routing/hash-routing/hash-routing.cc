@@ -41,6 +41,21 @@ namespace ns3 {
 
 NS_OBJECT_ENSURE_REGISTERED (HashRouting);
 
+inline unsigned HostAddrToSubtree(uint32_t addr)
+{
+	return ((addr & 0x00FF0000) >> 17);
+};
+
+inline unsigned HostAddrToEdge(uint32_t addr)
+{
+	return ((addr & 0x0000FF00) >> 10);
+};
+
+inline unsigned HostAddrToPort(uint32_t addr)
+{
+	return (addr & 0x000000FF);
+};
+
 TypeId 
 HashRouting::GetTypeId (void)
 { 
@@ -50,6 +65,11 @@ HashRouting::GetTypeId (void)
                    "Enable rerouting upon congestion",
                    BooleanValue (true),
                    MakeBooleanAccessor (&HashRouting::m_enableRR),
+                   MakeBooleanChecker ())
+    .AddAttribute ("IntelReroute",
+                   "Enable intelligent reroute decision base on CN history",
+                   BooleanValue (true),
+                   MakeBooleanAccessor (&HashRouting::m_intelRR),
                    MakeBooleanChecker ())
     .AddAttribute ("RerouteThreshold",
                    "Number of congestion signal to be seen before reroute triggered",
@@ -169,8 +189,8 @@ HashRouting::RouteInput  (Ptr<const Packet> p, const Ipv4Header &header, Ptr<con
 		flowid tuple = cnh.GetFlow();
 		uint32_t oldPort = Lookup(tuple);
 		// Then check if we need to do rerouting
-		if (NeedReroute(tuple) &&
-				RequestDestRoute(a, outPort) &&
+		if (RequestDestRoute(a, outPort) &&
+				NeedReroute(tuple, header.GetSource().Get()) &&
 				(header.GetTtl()==64 || !IsEdge(header.GetSource()))) {
 			// If the congestion signal is for a host local to this
 			// edge switch, and flow needs reroute, and the congestion
@@ -315,7 +335,7 @@ HashRouting::RequestFlowRoute(const flowid& tuple, uint32_t& outPort)
 }
 
 bool
-HashRouting::NeedReroute(const flowid& fid)
+HashRouting::NeedReroute(const flowid& fid, uint32_t cp)
 {
 	// Linear search the congestion record table
 	CongRecordTable::iterator i = m_congRecord.begin();
@@ -330,6 +350,7 @@ HashRouting::NeedReroute(const flowid& fid)
 			// threshold is met
 			(*i)->count++;
 			(*i)->last = Simulator::Now();
+			if (m_intelRR) (*i)->congPoints.insert(cp);
 			NS_LOG_LOGIC("Flow "<< fid <<" set with count "<< (*i)->count <<", thresh="<< m_rrThresh);
 			if ((*i)->count > m_rrThresh) {
 				(*i)->count = 0;
@@ -343,9 +364,69 @@ HashRouting::NeedReroute(const flowid& fid)
 	NS_LOG_LOGIC("Flow "<< fid <<" not found. Create new record.");
 	// The current flow is not on the congestion record table, add to it
 	Ptr<CongRecord> rec = Create<CongRecord>(fid, Simulator::Now(), 1);
+	if (m_intelRR) rec->congPoints.insert(cp);
 	m_congRecord.push_back(rec);
 	return false;
 }
+
+uint32_t
+HashRouting::IntelRoute(const flowid& fid)
+{
+	// Select the least-likely congested port according to history
+	uint32_t daddr = fid.GetDAddr();
+	const unsigned N = (m_ipv4->GetNInterfaces() - 1)/2;
+	const unsigned d_st = HostAddrToSubtree(daddr);
+	const unsigned d_sw = HostAddrToEdge(daddr);
+	unsigned s_pt = N;
+	unsigned newPort = N;
+	double prob = 0;
+	std::set<uint32_t> cp;
+	for (CongRecordTable::iterator i = m_congRecord.begin();
+		i != m_congRecord.end(); i++) {
+		// Kill all expired record
+		if ((*i)->last + m_lifetime < Simulator::Now()) {
+			i = m_congRecord.erase(i);
+			continue;
+		};
+		// Make the union of all congPoints sets into cp
+		for (std::set<uint32_t>::iterator j = (*i)->congPoints.begin();
+			j != (*i)->congPoints.end(); j++) {
+			cp.insert(*j);
+		};
+	};
+	while (s_pt < m_ipv4->GetNInterfaces()) {
+		int edgeUp = 0, aggrUp = 0, coreDn = 0, aggrDn = 0;
+		for (std::set<uint32_t>::iterator i = cp.begin(); i != cp.end(); i++) {
+			if (*i & 0x00010300 == 0x00000300) {
+				if (s_pt == HostAddrToPort(*i)) {
+					edgeUp++;
+				};
+			} else if (*i & 0x0001C000 == 0x00010000) {
+				if (s_pt == N + ((*i & 0x00003F00) >> 8)) {
+					aggrUp++;
+				};
+			} else if (*i & 0x0001C000 == 0x00014000) {
+				if (d_st == ((*i & 0x00FE0000) >> 17) &&
+				    s_pt == N + (*i & 0x000000FF)) {
+					coreDn++;
+				};
+			} else if (*i & 0x00010300 == 0x00000100) {
+				if (d_st == ((*i & 0x00FE0000) >> 17) &&
+				    d_sw == ((*i & 0x0000FC00) >> 10) &&
+				    s_pt == N + (*i & 0x000000FF)) {
+					aggrDn++;
+				};
+			};
+		};
+		double portProb = (edgeUp?0.0:1.0) * (N - aggrUp) * (N - coreDn) * (aggrDn?0:1) / N / N;
+		if (portProb > prob) {
+			prob = portProb;
+			newPort = s_pt;
+		};
+		s_pt ++;
+	};
+	return newPort;
+};
 
 uint32_t
 HashRouting::Reroute(const flowid& fid, uint32_t oldPort)
@@ -353,12 +434,17 @@ HashRouting::Reroute(const flowid& fid, uint32_t oldPort)
 	// Compute a new port
 	uint16_t newPort;
 	uint16_t numDownPorts = (m_ipv4->GetNInterfaces()-1)/2;
-	do {
-		newPort = 1 + static_cast<uint16_t>(UniformVariable(0,numDownPorts).GetValue());
-		if (oldPort > numDownPorts) {
-			newPort += numDownPorts;
-		};
-	} while (newPort == oldPort);
+	if (! m_intelRR || true /* Allows only random at this moment */ ) {
+		// Randomly pick a new port
+		do {
+			newPort = 1 + static_cast<uint16_t>(UniformVariable(0,numDownPorts).GetValue());
+			if (oldPort > numDownPorts) { // shall be always true as it is the up ports
+				newPort += numDownPorts;
+			};
+		} while (newPort == oldPort);
+	} else {
+		newPort = IntelRoute(fid);
+	};
 
 	// Linear search for matching entry in m_flowRouteTable
 	FlowRouteTable::iterator it = m_flowRouteTable.begin();

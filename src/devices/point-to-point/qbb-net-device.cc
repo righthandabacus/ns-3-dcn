@@ -16,6 +16,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#define __STDC_LIMIT_MACROS 1
+#include <stdint.h>
 #include "ns3/qbb-net-device.h"
 #include "ns3/md5sum.h"
 #include "ns3/log.h"
