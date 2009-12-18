@@ -87,6 +87,7 @@ public:
   void operator() (T1 a1, T2 a2, T3 a3, T4 a4, T5 a5, T6 a6) const;
   void operator() (T1 a1, T2 a2, T3 a3, T4 a4, T5 a5, T6 a6, T7 a7) const;
   void operator() (T1 a1, T2 a2, T3 a3, T4 a4, T5 a5, T6 a6, T7 a7, T8 a8) const;
+  size_t size() const;
 
 private:  
   typedef std::list<Callback<void,T1,T2,T3,T4,T5,T6,T7,T8> > CallbackList;
@@ -98,6 +99,16 @@ private:
 // implementation below.
 
 namespace ns3 {
+
+template<typename T1, typename T2, 
+         typename T3, typename T4,
+         typename T5, typename T6,
+         typename T7, typename T8>
+size_t
+TracedCallback<T1,T2,T3,T4,T5,T6,T7,T8>::size() const
+{
+	return m_callbackList.size();
+}
 
 template<typename T1, typename T2, 
          typename T3, typename T4,

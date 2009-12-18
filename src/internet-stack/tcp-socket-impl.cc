@@ -125,7 +125,7 @@ TcpSocketImpl::TcpSocketImpl(const TcpSocketImpl& sock)
     m_segmentSize (sock.m_segmentSize),
     m_rxWindowSize (sock.m_rxWindowSize)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	NS_LOG_LOGIC("Invoked the copy constructor");
 	// Copy the rtt estimator if it is set
 	if (sock.m_rtt) {
@@ -240,7 +240,7 @@ TcpSocketImpl::Bind (const Address &address)
 int
 TcpSocketImpl::Close (void)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	// First we check to see if there is any unread rx data
 	// Bug number 426 claims we should send reset in this case.
 	if (m_rxBuffer.Size() != 0) {
@@ -261,7 +261,7 @@ TcpSocketImpl::Close (void)
 int 
 TcpSocketImpl::ShutdownSend (void)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	m_shutdownSend = true;
 	return 0;
 }
@@ -269,7 +269,7 @@ TcpSocketImpl::ShutdownSend (void)
 int 
 TcpSocketImpl::ShutdownRecv (void)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	m_shutdownRecv = true;
 	return 0;
 }
@@ -358,21 +358,21 @@ TcpSocketImpl::SendTo (Ptr<Packet> p, uint32_t flags, const Address &address)
 uint32_t
 TcpSocketImpl::GetTxAvailable (void) const
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	return m_txBuffer.Available();
 }
 
 uint32_t
 TcpSocketImpl::GetRxAvailable (void) const
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	return m_rxBuffer.Available();
 }
 
 Ptr<Packet>
 TcpSocketImpl::Recv (uint32_t maxSize, uint32_t flags)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	if(m_rxBuffer.Size()==0 && m_state == CLOSE_WAIT) {
 		return Create<Packet>(); // Send EOF on connection close
 	}
@@ -406,15 +406,31 @@ TcpSocketImpl::RecvFrom (uint32_t maxSize, uint32_t flags, Address &fromAddress)
 int
 TcpSocketImpl::GetSockName (Address &address) const
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	address = InetSocketAddress(m_localAddress, m_localPort);
 	return 0;
+}
+
+void
+TcpSocketImpl::BindToNetDevice (Ptr<NetDevice> netdevice)
+{
+	NS_LOG_FUNCTION (netdevice);
+	Socket::BindToNetDevice (netdevice); // Includes sanity check
+	if (m_endPoint == 0) {
+		if (Bind () == -1) {
+			NS_ASSERT (m_endPoint == 0);
+			return;
+		}
+		NS_ASSERT (m_endPoint != 0);
+	}
+	m_endPoint->BindToNetDevice (netdevice);
+	return;
 }
 
 int
 TcpSocketImpl::CommonBind (void)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	if (m_endPoint == 0) {
 		return -1;
 	}
@@ -467,7 +483,7 @@ TcpSocketImpl::ForwardUp (Ptr<Packet> packet, Ipv4Address ipv4, uint16_t port)
 void 
 TcpSocketImpl::Destroy (void)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION (this);
 	m_node = 0;
 	m_endPoint = 0;
 	m_tcp = 0;
@@ -492,7 +508,7 @@ void TcpSocketImpl::SendEmptyPacket (uint8_t flags)
 	header.SetSourcePort (m_endPoint->GetLocalPort ());
 	header.SetDestinationPort (m_remotePort);
 	header.SetWindowSize (AdvertisedWindowSize());
-	m_tcp->SendPacket (p, header, m_endPoint->GetLocalAddress(), m_remoteAddress);
+	m_tcp->SendPacket (p, header, m_endPoint->GetLocalAddress(), m_remoteAddress, m_boundnetdevice);
 	Time rto = m_rtt->RetransmitTimeout ();
 	bool hasSyn = flags & TcpHeader::SYN;
 	bool hasFin = flags & TcpHeader::FIN;
@@ -537,7 +553,7 @@ int TcpSocketImpl::SetupEndpoint()
 		header.SetDestination (m_remoteAddress);
 		Socket::SocketErrno errno_;
 		Ptr<Ipv4Route> route;
-		uint32_t oif = 0; // Output interface = 0 means do not restrict to a specific interface
+		Ptr<NetDevice> oif = m_boundnetdevice;
 		route = ipv4->GetRoutingProtocol ()->RouteOutput (Ptr<Packet> (), header, oif, errno_);
 		if (route == 0) {
 			NS_LOG_LOGIC ("TcpSocketImpl::SetupEndpoint(): Route to " << m_remoteAddress << " does not exist");
@@ -576,18 +592,28 @@ void TcpSocketImpl::ConnectionSucceeded()
 	NotifyConnectionSucceeded();
 }
 
-void TcpSocketImpl::DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail)
+void
+TcpSocketImpl::DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail)
 {
+	NS_LOG_FUNCTION (this << nd << avail);
 	Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
 	if (qbb->GetTxAvailable() >= m_segmentSize) {
-		qbb->DisconnectWithoutContext(MakeCallback(&TcpSocketImpl::DeviceUnblocked, this));
+		Simulator::ScheduleNow(&TcpSocketImpl::CancelNetDeviceCallback, this, qbb);
 		SendPendingData(m_connected);
 	};
 };
 
+void
+TcpSocketImpl::CancelNetDeviceCallback(Ptr<QbbNetDevice> qbb)
+{
+	NS_LOG_FUNCTION (this << qbb);
+	qbb->DisconnectWithoutContext(MakeCallback(&TcpSocketImpl::DeviceUnblocked, this));
+};
+
 // Send as much pending data as possible according to the Tx window. Note that
 // this function did not implement the PSH flag
-bool TcpSocketImpl::SendPendingData (bool withAck)
+bool
+TcpSocketImpl::SendPendingData (bool withAck)
 {
 	NS_LOG_FUNCTION (this << withAck);
 	NS_LOG_LOGIC ("ENTERING SendPendingData");
@@ -661,7 +687,7 @@ bool TcpSocketImpl::SendPendingData (bool withAck)
 			m_retxEvent = Simulator::Schedule (rto,&TcpSocketImpl::ReTxTimeout,this);
 		}
 		NS_LOG_LOGIC ("About to send a packet with flags: " << flags);
-		m_tcp->SendPacket (p, header, m_endPoint->GetLocalAddress (), m_remoteAddress);
+		m_tcp->SendPacket (p, header, m_endPoint->GetLocalAddress (), m_remoteAddress, m_boundnetdevice);
 		m_rtt->SentSeq(m_nextTxSequence, sz);       // notify the RTT
 		// Notify the application of the data being sent
 		Simulator::ScheduleNow(&TcpSocketImpl::NotifyDataSent, this, sz);
@@ -1133,7 +1159,7 @@ void TcpSocketImpl::PersistTimeout ()
 	tcpHeader.SetDestinationPort (m_remotePort);
 	tcpHeader.SetWindowSize (AdvertisedWindowSize());
 
-	m_tcp->SendPacket(p, tcpHeader, m_endPoint->GetLocalAddress (), m_remoteAddress);
+	m_tcp->SendPacket(p, tcpHeader, m_endPoint->GetLocalAddress (), m_remoteAddress, m_boundnetdevice);
 	NS_LOG_LOGIC ("Schedule persist timeout at time " 
 			<<Simulator::Now ().GetSeconds () << " to expire at time "
 			<< (Simulator::Now () + m_persistTime).GetSeconds());
@@ -1187,7 +1213,7 @@ void TcpSocketImpl::Retransmit ()
 	tcpHeader.SetFlags (flags);
 	tcpHeader.SetWindowSize (AdvertisedWindowSize());
 
-	m_tcp->SendPacket (p, tcpHeader, m_endPoint->GetLocalAddress (), m_remoteAddress);
+	m_tcp->SendPacket (p, tcpHeader, m_endPoint->GetLocalAddress (), m_remoteAddress, m_boundnetdevice);
 }
 
 void TcpSocketImpl::CancelAllTimers()

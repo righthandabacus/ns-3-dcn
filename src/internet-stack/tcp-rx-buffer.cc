@@ -64,7 +64,8 @@ TcpRxBuffer::Add(Ptr<Packet> p, TcpHeader const& tcph)
 		pktSeq = nextRxSeq;
 	} else {
 		BufIterator prev = data.lower_bound(pktSeq);
-		if (prev != data.begin()) {
+		if (prev != data.end()) {
+			NS_LOG_LOGIC("prev->first=" << prev->first << ", pktSeq=" << pktSeq);
 			NS_ASSERT(prev->first >= pktSeq);
 			--prev;
 			SequenceNumber prevSeq = prev->first + SequenceNumber(prev->second->GetSize());

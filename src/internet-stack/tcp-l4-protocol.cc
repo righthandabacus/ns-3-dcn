@@ -563,9 +563,9 @@ TcpL4Protocol::Receive (Ptr<Packet> packet,
 void
 TcpL4Protocol::Send (Ptr<Packet> packet, 
            Ipv4Address saddr, Ipv4Address daddr, 
-           uint16_t sport, uint16_t dport)
+           uint16_t sport, uint16_t dport, Ptr<NetDevice> oif)
 {
-  NS_LOG_FUNCTION (this << packet << saddr << daddr << sport << dport);
+  NS_LOG_FUNCTION (this << packet << saddr << daddr << sport << dport << oif);
 
   TcpHeader tcpHeader;
   tcpHeader.SetDestinationPort (dport);
@@ -593,7 +593,7 @@ TcpL4Protocol::Send (Ptr<Packet> packet,
       header.SetProtocol (PROT_NUMBER);
       Socket::SocketErrno errno_;
       Ptr<Ipv4Route> route;
-      uint32_t oif = 0; //specify non-zero if bound to a source address
+      Ptr<NetDevice> oif (0); //specify non-zero if bound to a source address
       route = ipv4->GetRoutingProtocol ()->RouteOutput (packet, header, oif, errno_);
       ipv4->Send (packet, saddr, daddr, PROT_NUMBER, route);
     }
@@ -601,14 +601,14 @@ TcpL4Protocol::Send (Ptr<Packet> packet,
 
 void
 TcpL4Protocol::SendPacket (Ptr<Packet> packet, const TcpHeader &outgoing,
-                               Ipv4Address saddr, Ipv4Address daddr)
+                               Ipv4Address saddr, Ipv4Address daddr, Ptr<NetDevice> oif)
 {
   NS_LOG_LOGIC("TcpL4Protocol " << this
               << " sending seq " << outgoing.GetSequenceNumber()
               << " ack " << outgoing.GetAckNumber()
               << " flags " << std::hex << (int)outgoing.GetFlags() << std::dec
               << " data size " << packet->GetSize());
-  NS_LOG_FUNCTION (this << packet << saddr << daddr);
+  NS_LOG_FUNCTION (this << packet << saddr << daddr << oif);
   // XXX outgoingHeader cannot be logged
 
   TcpHeader outgoingHeader = outgoing;
@@ -633,7 +633,6 @@ TcpL4Protocol::SendPacket (Ptr<Packet> packet, const TcpHeader &outgoing,
       header.SetProtocol (PROT_NUMBER);
       Socket::SocketErrno errno_;
       Ptr<Ipv4Route> route;
-      uint32_t oif = 0; //specify non-zero if bound to a source address
       route = ipv4->GetRoutingProtocol ()->RouteOutput (packet, header, oif, errno_);
       ipv4->Send (packet, saddr, daddr, PROT_NUMBER, route);
     }

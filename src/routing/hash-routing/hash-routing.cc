@@ -143,7 +143,7 @@ HashRouting::Lookup (flowid fid)
 }
 
 Ptr<Ipv4Route>
-HashRouting::RouteOutput (Ptr<Packet> p, const Ipv4Header &header, uint32_t oif, Socket::SocketErrno &sockerr)
+HashRouting::RouteOutput (Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr)
 {      
 	// Hash-routing is for unicast destination only
 	Ipv4Address a = header.GetDestination();
@@ -397,20 +397,20 @@ HashRouting::IntelRoute(const flowid& fid)
 	while (s_pt < m_ipv4->GetNInterfaces()) {
 		int edgeUp = 0, aggrUp = 0, coreDn = 0, aggrDn = 0;
 		for (std::set<uint32_t>::iterator i = cp.begin(); i != cp.end(); i++) {
-			if (*i & 0x00010300 == 0x00000300) {
+			if ((*i & 0x00010300) == 0x00000300) {
 				if (s_pt == HostAddrToPort(*i)) {
 					edgeUp++;
 				};
-			} else if (*i & 0x0001C000 == 0x00010000) {
+			} else if ((*i & 0x0001C000) == 0x00010000) {
 				if (s_pt == N + ((*i & 0x00003F00) >> 8)) {
 					aggrUp++;
 				};
-			} else if (*i & 0x0001C000 == 0x00014000) {
+			} else if ((*i & 0x0001C000) == 0x00014000) {
 				if (d_st == ((*i & 0x00FE0000) >> 17) &&
 				    s_pt == N + (*i & 0x000000FF)) {
 					coreDn++;
 				};
-			} else if (*i & 0x00010300 == 0x00000100) {
+			} else if ((*i & 0x00010300) == 0x00000100) {
 				if (d_st == ((*i & 0x00FE0000) >> 17) &&
 				    d_sw == ((*i & 0x0000FC00) >> 10) &&
 				    s_pt == N + (*i & 0x000000FF)) {

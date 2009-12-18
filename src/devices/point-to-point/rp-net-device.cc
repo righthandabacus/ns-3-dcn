@@ -157,6 +157,7 @@ RpNetDevice::DequeueAndTransmit()
 	// round robin.
 	double creditsDue = std::numeric_limits<double>::infinity();
 	unsigned qIndex = m_lastQ;
+	unsigned candidate = 0;
 	Time t = Simulator::GetMaximumSimulationTime();
 	for (unsigned i=0; i<qCnt; i++) {
 		// Looping queue index
@@ -164,27 +165,30 @@ RpNetDevice::DequeueAndTransmit()
 		// Skip this queue if it is unable to send packet
 		if (m_paused[qIndex] && m_qbbEnabled) continue;
 		if (m_queue[qIndex]->GetNPackets() == 0) continue;
-		NS_LOG_LOGIC("Good queue "<< qIndex << " avail at " << m_nextAvail[qIndex] << " t=" << t);
 		// Lazy initialization
 		if (m_rate[qIndex] == 0) m_rate[qIndex] = m_bps;
-		// Do the water filling method to find the credits due
+		// Look for the soonest send time in case nothing to send
 		t = Min(m_nextAvail[qIndex], t);
-		NS_LOG_LOGIC("t=" << t);
-		if (m_nextAvail[qIndex] <= Simulator::Now()) {
-			uint32_t pktSize = m_queue[qIndex]->Peek()->GetSize();
-			creditsDue = std::min(m_bps/m_rate[qIndex] * (pktSize-m_credits[qIndex]), creditsDue);
+		if (m_nextAvail[qIndex].GetTimeStep() > Simulator::Now().GetTimeStep()) continue;
+		// Do the water filling method to find the credits due
+		uint32_t pktSize = m_queue[qIndex]->Peek()->GetSize();
+		NS_LOG_INFO("pktSize=" << pktSize << ", credits on queue " << qIndex << " is " << m_credits[qIndex]);
+		double due = std::max(0.0, m_bps/m_rate[qIndex] * (pktSize - m_credits[qIndex]));
+		if (due < creditsDue) {
+			creditsDue = due;
+			candidate = qIndex;
 		};
 	};
 	NS_LOG_LOGIC("Credits due = " << creditsDue);
 	// If nothing to send, reschedule DequeueAndTransmit()
 	if (creditsDue == std::numeric_limits<double>::infinity()) {
 		NS_LOG_LOGIC("Nothing to send");
-		if (m_nextSend.IsExpired()) {
-			if (t > Simulator::Now()) {
-				NS_LOG_LOGIC("Next DequeueAndTransmit at "<< t <<" or "<<(t-Simulator::Now())<<" later");
-				NS_ASSERT(t > Simulator::Now());
-				m_nextSend = Simulator::Schedule(t-Simulator::Now(), &RpNetDevice::DequeueAndTransmit, this);
-			};
+		if (m_nextSend.IsExpired() &&
+		    t < Simulator::GetMaximumSimulationTime() &&
+		    t.GetTimeStep() > Simulator::Now().GetTimeStep()) {
+			NS_LOG_LOGIC("Next DequeueAndTransmit at "<< t <<" or "<<(t-Simulator::Now())<<" later");
+			NS_ASSERT(t > Simulator::Now());
+			m_nextSend = Simulator::Schedule(t-Simulator::Now(), &RpNetDevice::DequeueAndTransmit, this);
 		};
 		return;
 	};
@@ -197,27 +201,22 @@ RpNetDevice::DequeueAndTransmit()
 		// Skip this queue if it is unable to send packet
 		if (m_paused[qIndex] && m_qbbEnabled) continue;
 		if (m_queue[qIndex]->GetNPackets() == 0) continue;
-		if (m_nextAvail[qIndex] > Simulator::Now()) continue;
-		// Distribute credits
-		m_credits[qIndex] += m_rate[qIndex]/m_bps * creditsDue;
-		if (packet != 0) {
-			// The packet to send is found, continue distributing credits
+		if (m_nextAvail[qIndex].GetTimeStep() > Simulator::Now().GetTimeStep()) continue;
+		// Distribute credits if this is not the queue to send
+		if (qIndex != candidate) {
+			m_credits[qIndex] += m_rate[qIndex]/m_bps * creditsDue;
 			continue;
 		};
-		// Proceed to next queue if not enough credits to send a packet
-		uint32_t pktSize = m_queue[qIndex]->Peek()->GetSize();
-		NS_ASSERT(sizeof(double)==sizeof(unsigned long long));
-		union { double d; unsigned long long l;} c;
-		c.d = m_credits[qIndex];
-		c.l++;
-		if (pktSize > c.d) continue;
-		// Credit is enough, dequeue
+		// This is the queue to send, dequeue and reset credit
 		packet = m_queue[qIndex]->Dequeue();
 		m_credits[qIndex] = 0;
 		m_lastQ = qIndex;
 		m_bufferUsage -= packet->GetSize();
 		uint32_t avail = GetTxAvailable();
+		NS_LOG_LOGIC("this=" << this << ", m_sendCb size=" << m_sendCb.size());
+		m_txMachineState = BUSY;	// prevent simultaneous call during callback
 		if (avail) m_sendCb(this, avail);
+		m_txMachineState = READY;
 		// Update state variables if necessary
 		if (m_rate[qIndex] == m_bps) continue;
 		m_txBytes[qIndex] -= pktSize;
@@ -239,6 +238,7 @@ RpNetDevice::DequeueAndTransmit()
 		};
 	};
 	// Send the packet by calling TransmitStart(p)
+	NS_ASSERT(packet != 0);
 	m_snifferTrace (packet);
 	m_promiscSnifferTrace (packet);
 	TransmitStart (packet);

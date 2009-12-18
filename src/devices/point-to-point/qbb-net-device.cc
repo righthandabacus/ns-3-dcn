@@ -86,13 +86,13 @@ QbbNetDevice::QbbNetDevice () : m_bufferUsage(0)
 
 QbbNetDevice::~QbbNetDevice ()
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION(this);
 }
 
 void 
 QbbNetDevice::DoDispose()
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION(this);
 	// Cancel all the Qbb events
 	for (unsigned i=0; i<qCnt; i++) {
 		Simulator::Cancel(m_resumeEvt[i]);
@@ -105,7 +105,7 @@ QbbNetDevice::DoDispose()
 void 
 QbbNetDevice::TransmitComplete (void)
 {
-	NS_LOG_FUNCTION_NOARGS ();
+	NS_LOG_FUNCTION(this);
 	NS_ASSERT_MSG(m_txMachineState == BUSY, "Must be BUSY if transmitting");
 	m_txMachineState = READY;
 
@@ -120,6 +120,8 @@ QbbNetDevice::TransmitComplete (void)
 void
 QbbNetDevice::DequeueAndTransmit (void)
 {
+	NS_LOG_FUNCTION(this);
+
 	// Quit if channel busy
 	if (m_txMachineState == BUSY) return;
 
@@ -148,7 +150,7 @@ QbbNetDevice::DequeueAndTransmit (void)
 void
 QbbNetDevice::Resume (unsigned qIndex)
 {
-	NS_LOG_FUNCTION(qIndex);
+	NS_LOG_FUNCTION(this << qIndex);
 	NS_ASSERT_MSG(m_paused[qIndex], "Must be PAUSEd");
 	m_paused[qIndex] = false;
 	NS_LOG_LOGIC("Node "<< m_node->GetId() <<" dev "<< m_ifIndex <<" queue "<< qIndex <<
@@ -319,13 +321,19 @@ QbbNetDevice::GetTxAvailable(void) const
 void
 QbbNetDevice::ConnectWithoutContext(const CallbackBase& callback)
 {
+	NS_LOG_FUNCTION(this);
+	NS_LOG_LOGIC("callback list of size " << m_sendCb.size());
 	m_sendCb.ConnectWithoutContext(callback);
+	NS_LOG_LOGIC("callback list size is now " << m_sendCb.size());
 };
 
 void
 QbbNetDevice::DisconnectWithoutContext(const CallbackBase& callback)
 {
+	NS_LOG_FUNCTION(this);
+	NS_LOG_LOGIC("callback list of size " << m_sendCb.size());
 	m_sendCb.DisconnectWithoutContext(callback);
+	NS_LOG_LOGIC("callback list size is now " << m_sendCb.size());
 };
 
 } // namespace ns3

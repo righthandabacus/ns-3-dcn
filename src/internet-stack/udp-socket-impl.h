@@ -78,6 +78,7 @@ public:
   virtual int GetSockName (Address &address) const; 
   virtual int MulticastJoinGroup (uint32_t interfaceIndex, const Address &groupAddress);
   virtual int MulticastLeaveGroup (uint32_t interfaceIndex, const Address &groupAddress);
+  virtual void BindToNetDevice (Ptr<NetDevice> netdevice);
 
 protected:
   // Attributes set through UdpSocket base class 
@@ -98,6 +99,7 @@ protected:
   friend class UdpSocketFactory;
   // invoked by Udp class
   void DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail); // To be called by the QbbNetDevice upon tx buffer available again
+  void CancelNetDeviceCallback(Ptr<QbbNetDevice> qbb);
   int FinishBind (void);
   void ForwardUp (Ptr<Packet> p, Ipv4Address ipv4, uint16_t port);
   void Destroy (void);

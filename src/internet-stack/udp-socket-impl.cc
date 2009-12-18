@@ -31,6 +31,7 @@
 #include "udp-socket-impl.h"
 #include "udp-l4-protocol.h"
 #include "ipv4-end-point.h"
+#include "ns3/simulator.h"
 #include <limits>
 
 NS_LOG_COMPONENT_DEFINE ("UdpSocketImpl");
@@ -303,6 +304,9 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 {
 	NS_LOG_FUNCTION (this << p << dest << port);
 
+	if (m_boundnetdevice) {
+		NS_LOG_LOGIC("Bound interface number " << m_boundnetdevice->GetIfIndex());
+	}
 	if (m_endPoint == 0) {
 		if (Bind () == -1) {
 			NS_ASSERT (m_endPoint == 0);
@@ -367,6 +371,11 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 			Ipv4InterfaceAddress iaddr = ipv4->GetAddress (i, 0);
 			Ipv4Address addri = iaddr.GetLocal ();
 			if (addri == Ipv4Address ("127.0.0.1")) continue;
+			// Check if interface-bound socket
+			if (m_boundnetdevice) {
+				if (ipv4->GetNetDevice(i) != m_boundnetdevice)
+					continue;
+			}
 			Ipv4Mask maski = iaddr.GetMask ();
 			if (maski == Ipv4Mask::GetOnes ()) {
 				// if the network mask is 255.255.255.255, do not convert dest
@@ -414,7 +423,7 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 		header.SetDestination (dest);
 		header.SetProtocol (UdpL4Protocol::PROT_NUMBER);
 		Socket::SocketErrno errno_;
-		uint32_t oif = 0; //specify non-zero if bound to a source address
+		Ptr<NetDevice> oif = m_boundnetdevice;
 		// TBD-- we could cache the route and just check its validity
 		Ptr<Ipv4Route> route = ipv4->GetRoutingProtocol ()->RouteOutput (p, header, oif, errno_); 
 		if (route == 0) {
@@ -449,12 +458,22 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 	return 0;
 }
 
-void UdpSocketImpl::DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail)
+void
+UdpSocketImpl::DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail)
 {
 	avail = nd->GetObject<QbbNetDevice>()->GetTxAvailable();
+	Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
 	if (avail) {
+		Simulator::ScheduleNow(&UdpSocketImpl::CancelNetDeviceCallback, this, qbb);
 		NotifySend (avail);
 	};
+};
+
+void
+UdpSocketImpl::CancelNetDeviceCallback(Ptr<QbbNetDevice> qbb)
+{
+	NS_LOG_FUNCTION (this << qbb);
+	qbb->DisconnectWithoutContext(MakeCallback(&UdpSocketImpl::DeviceUnblocked, this));
 };
 
 // XXX maximum message size for UDP broadcast is limited by MTU
@@ -567,6 +586,24 @@ UdpSocketImpl::MulticastLeaveGroup (uint32_t interface, const Address &groupAddr
    5) call ipv4->MulticastLeaveGroup () or Ipv6->MulticastLeaveGroup ()
   */
   return 0;
+}
+
+void
+UdpSocketImpl::BindToNetDevice (Ptr<NetDevice> netdevice)
+{
+  NS_LOG_FUNCTION (netdevice);
+  Socket::BindToNetDevice (netdevice); // Includes sanity check
+  if (m_endPoint == 0)
+    {
+      if (Bind () == -1)
+       {
+         NS_ASSERT (m_endPoint == 0);
+         return;
+       }
+      NS_ASSERT (m_endPoint != 0);
+    }
+  m_endPoint->BindToNetDevice (netdevice);
+  return;
 }
 
 void 

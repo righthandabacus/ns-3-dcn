@@ -90,6 +90,7 @@ public:
 	virtual Ptr<Packet> Recv (uint32_t maxSize, uint32_t flags); // Return a packet to be forwarded to app
 	virtual Ptr<Packet> RecvFrom (uint32_t maxSize, uint32_t flags, Address &fromAddress); // ... and write the remote address at fromAddress
 	virtual int GetSockName (Address &address) const; // Return local addr:port in address
+	virtual void BindToNetDevice (Ptr<NetDevice> netdevice);
 
 protected:
 	// Helper functions
@@ -102,6 +103,7 @@ protected:
 	void CompleteFork(Ptr<Packet>, const TcpHeader&, const Address& fromAddress);
 	void ConnectionSucceeded(); // Schedule-friendly wrapper for Socket::NotifyConnectionSucceeded()
 	void DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail); // To be called by the QbbNetDevice upon tx buffer available again
+	void CancelNetDeviceCallback(Ptr<QbbNetDevice> qbb);
 	bool SendPendingData(bool withAck = false);
 
 	// State transition functions
