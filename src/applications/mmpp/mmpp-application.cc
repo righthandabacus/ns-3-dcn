@@ -207,25 +207,25 @@ void MmppApplication::ScheduleNextTransition()
 void MmppApplication::ResumeSend(Ptr<Socket> sock, uint32_t txAvail)
 {
 	NS_LOG_FUNCTION(this << sock << txAvail);
-	if (m_pendingPkts.size() == 0 || m_pendingPkts.front()->GetSize() > txAvail) {
-		return;
-	};
+	if (m_pendingBytes == 0) return;
 
 	// ScheduleNow to prevent a huge calling stack build up
-	Simulator::ScheduleNow(&MmppApplication::SendPendingPacket, this);
+	Simulator::ScheduleNow(&MmppApplication::SendPendingPacket, this, txAvail);
 }
 
-void MmppApplication::SendPendingPacket()
+void MmppApplication::SendPendingPacket(uint32_t txAvail)
 {
-	while (m_pendingPkts.size()) {
-		Ptr<Packet> packet = m_pendingPkts.front();
-		if (m_socket->Send (packet) == 0) {
+	while (m_pendingBytes) {
+		uint32_t size = std::min(std::min(txAvail, m_pendingBytes), 1460U);
+		Ptr<Packet> packet = Create<Packet> (size);
+		if (m_socket->Send (packet) <= 0) {
 			return;
 		};
 		m_txTrace (packet);
-		m_totBytes += packet->GetSize();
-		m_pendingPkts.pop_front();
-		NS_LOG_LOGIC ("Send resumed. Pending pkts =" << m_pendingPkts.size());
+		m_totBytes += size;
+		m_pendingBytes -= size;
+		txAvail -= size;
+		NS_LOG_LOGIC ("Send resumed. Pending bytes=" << m_pendingBytes);
 	};
 }
 	
@@ -235,12 +235,12 @@ void MmppApplication::SendPacket()
 	NS_ASSERT (m_sendEvent.IsExpired ());
 	NS_LOG_LOGIC ("sending packet at " << Simulator::Now());
 	Ptr<Packet> packet = Create<Packet> ((*m_pktSize)[m_state]);
-	if (m_socket->Send (packet) >= 0) {
+	if (m_socket->Send (packet) > 0) {
 		m_txTrace (packet);
 		m_totBytes += (*m_pktSize)[m_state];
 	} else {
-		m_pendingPkts.push_back(packet);
-		NS_LOG_LOGIC ("Send blocked. Wait for notification. Pending pkts =" << m_pendingPkts.size());
+		m_pendingBytes += (*m_pktSize)[m_state];
+		NS_LOG_LOGIC ("Send blocked. Wait for notification. Pending bytes=" << m_pendingBytes);
 	};
 	ScheduleNextTx();
 }

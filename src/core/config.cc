@@ -44,7 +44,7 @@ MatchContainer::MatchContainer ()
 {}
 MatchContainer::MatchContainer (const std::vector<Ptr<Object> > &objects, 
                                 const std::vector<std::string> &contexts,
-                                std::string path)
+                                const std::string& path)
   : m_objects (objects),
     m_contexts (contexts),
     m_path (path)
@@ -69,19 +69,19 @@ MatchContainer::Get (uint32_t i) const
 {
   return m_objects[i];
 }
-std::string 
+const std::string&
 MatchContainer::GetMatchedPath (uint32_t i) const
 {
   return m_contexts[i];
 }
-std::string 
+const std::string&
 MatchContainer::GetPath (void) const
 {
   return m_path;
 }
 
 void 
-MatchContainer::Set (std::string name, const AttributeValue &value)
+MatchContainer::Set (const std::string& name, const AttributeValue &value)
 {
   for (Iterator tmp = Begin (); tmp != End (); ++tmp)
     {
@@ -90,7 +90,7 @@ MatchContainer::Set (std::string name, const AttributeValue &value)
     }
 }
 void 
-MatchContainer::Connect (std::string name, const CallbackBase &cb)
+MatchContainer::Connect (const std::string& name, const CallbackBase &cb)
 {
   NS_ASSERT (m_objects.size () == m_contexts.size ());
   for (uint32_t i = 0; i < m_objects.size (); ++i)
@@ -101,7 +101,7 @@ MatchContainer::Connect (std::string name, const CallbackBase &cb)
     }
 }
 void 
-MatchContainer::ConnectWithoutContext (std::string name, const CallbackBase &cb)
+MatchContainer::ConnectWithoutContext (const std::string& name, const CallbackBase &cb)
 {
   for (Iterator tmp = Begin (); tmp != End (); ++tmp)
     {
@@ -110,7 +110,7 @@ MatchContainer::ConnectWithoutContext (std::string name, const CallbackBase &cb)
     }
 }
 void 
-MatchContainer::Disconnect (std::string name, const CallbackBase &cb)
+MatchContainer::Disconnect (const std::string& name, const CallbackBase &cb)
 {
   NS_ASSERT (m_objects.size () == m_contexts.size ());
   for (uint32_t i = 0; i < m_objects.size (); ++i)
@@ -121,7 +121,7 @@ MatchContainer::Disconnect (std::string name, const CallbackBase &cb)
     }
 }
 void 
-MatchContainer::DisconnectWithoutContext (std::string name, const CallbackBase &cb)
+MatchContainer::DisconnectWithoutContext (const std::string& name, const CallbackBase &cb)
 {
   for (Iterator tmp = Begin (); tmp != End (); ++tmp)
     {
@@ -135,15 +135,15 @@ MatchContainer::DisconnectWithoutContext (std::string name, const CallbackBase &
 class ArrayMatcher
 {
 public:
-  ArrayMatcher (std::string element);
+  ArrayMatcher (const std::string& element);
   bool Matches (uint32_t i) const;
 private:
-  bool StringToUint32 (std::string str, uint32_t *value) const;
+  bool StringToUint32 (const std::string& str, uint32_t *value) const;
   std::string m_element;
 };
 
 
-ArrayMatcher::ArrayMatcher (std::string element)
+ArrayMatcher::ArrayMatcher (const std::string& element)
   : m_element (element)
 {}
 bool 
@@ -210,34 +210,42 @@ ArrayMatcher::Matches (uint32_t i) const
 }
 
 bool
-ArrayMatcher::StringToUint32 (std::string str, uint32_t *value) const
+ArrayMatcher::StringToUint32 (const std::string& str, uint32_t *value) const
 {
-  std::istringstream iss;
-  iss.str (str);
-  iss >> (*value);
-  return !iss.bad () && !iss.fail ();
+  const char* s = str.c_str();
+  uint32_t v = 0;
+  while (*s) {
+	if (*s >= '0' && *s <= '9') {
+		v = v*10 + (*s - '0');
+	} else {
+		return false;
+	};
+	++s;
+  };
+  *value = v;
+  return true;
 }
 
 
 class Resolver
 {
 public:
-  Resolver (std::string path);
+  Resolver (const std::string& path);
   virtual ~Resolver ();
 
   void Resolve (Ptr<Object> root);
 private:
   void Canonicalize (void);
-  void DoResolve (std::string path, Ptr<Object> root);
-  void DoArrayResolve (std::string path, const ObjectVectorValue &vector);
+  void DoResolve (const std::string& path, Ptr<Object> root);
+  void DoArrayResolve (const std::string& path, const ObjectVectorValue &vector);
   void DoResolveOne (Ptr<Object> object);
   std::string GetResolvedPath (void) const;
-  virtual void DoOne (Ptr<Object> object, std::string path) = 0;
+  virtual void DoOne (Ptr<Object> object, const std::string& path) = 0;
   std::vector<std::string> m_workStack;
   std::string m_path;
 };
 
-Resolver::Resolver (std::string path)
+Resolver::Resolver (const std::string& path)
   : m_path (path)
 {
   Canonicalize ();
@@ -287,7 +295,7 @@ Resolver::DoResolveOne (Ptr<Object> object)
 }
 
 void
-Resolver::DoResolve (std::string path, Ptr<Object> root)
+Resolver::DoResolve (const std::string& path, Ptr<Object> root)
 {
   NS_LOG_FUNCTION (path << root);
   std::string::size_type tmp;
@@ -423,7 +431,7 @@ Resolver::DoResolve (std::string path, Ptr<Object> root)
 }
 
 void 
-Resolver::DoArrayResolve (std::string path, const ObjectVectorValue &vector)
+Resolver::DoArrayResolve (const std::string& path, const ObjectVectorValue &vector)
 {
   NS_ASSERT (path != "");
   std::string::size_type tmp;
@@ -455,12 +463,12 @@ Resolver::DoArrayResolve (std::string path, const ObjectVectorValue &vector)
 class ConfigImpl 
 {
 public:
-  void Set (std::string path, const AttributeValue &value);
-  void ConnectWithoutContext (std::string path, const CallbackBase &cb);
-  void Connect (std::string path, const CallbackBase &cb);
-  void DisconnectWithoutContext (std::string path, const CallbackBase &cb);
-  void Disconnect (std::string path, const CallbackBase &cb);
-  Config::MatchContainer LookupMatches (std::string path);
+  void Set (const std::string& path, const AttributeValue &value);
+  void ConnectWithoutContext (const std::string& path, const CallbackBase &cb);
+  void Connect (const std::string& path, const CallbackBase &cb);
+  void DisconnectWithoutContext (const std::string& path, const CallbackBase &cb);
+  void Disconnect (const std::string& path, const CallbackBase &cb);
+  Config::MatchContainer LookupMatches (const std::string& path);
 
   void RegisterRootNamespaceObject (Ptr<Object> obj);
   void UnregisterRootNamespaceObject (Ptr<Object> obj);
@@ -469,13 +477,13 @@ public:
   Ptr<Object> GetRootNamespaceObject (uint32_t i) const;
   
 private:
-  void ParsePath (std::string path, std::string *root, std::string *leaf) const;
+  void ParsePath (const std::string& path, std::string *root, std::string *leaf) const;
   typedef std::vector<Ptr<Object> > Roots;
   Roots m_roots;
 };
 
 void 
-ConfigImpl::ParsePath (std::string path, std::string *root, std::string *leaf) const
+ConfigImpl::ParsePath (const std::string& path, std::string *root, std::string *leaf) const
 {
   std::string::size_type slash = path.find_last_of ("/");
   NS_ASSERT (slash != std::string::npos);
@@ -485,7 +493,7 @@ ConfigImpl::ParsePath (std::string path, std::string *root, std::string *leaf) c
 }
 
 void 
-ConfigImpl::Set (std::string path, const AttributeValue &value)
+ConfigImpl::Set (const std::string& path, const AttributeValue &value)
 {
   std::string root, leaf;
   ParsePath (path, &root, &leaf);
@@ -493,7 +501,7 @@ ConfigImpl::Set (std::string path, const AttributeValue &value)
   container.Set (leaf, value);
 }
 void 
-ConfigImpl::ConnectWithoutContext (std::string path, const CallbackBase &cb)
+ConfigImpl::ConnectWithoutContext (const std::string& path, const CallbackBase &cb)
 {
   std::string root, leaf;
   ParsePath (path, &root, &leaf);
@@ -501,7 +509,7 @@ ConfigImpl::ConnectWithoutContext (std::string path, const CallbackBase &cb)
   container.ConnectWithoutContext (leaf, cb);
 }
 void 
-ConfigImpl::DisconnectWithoutContext (std::string path, const CallbackBase &cb)
+ConfigImpl::DisconnectWithoutContext (const std::string& path, const CallbackBase &cb)
 {
   std::string root, leaf;
   ParsePath (path, &root, &leaf);
@@ -509,7 +517,7 @@ ConfigImpl::DisconnectWithoutContext (std::string path, const CallbackBase &cb)
   container.DisconnectWithoutContext (leaf, cb);
 }
 void 
-ConfigImpl::Connect (std::string path, const CallbackBase &cb)
+ConfigImpl::Connect (const std::string& path, const CallbackBase &cb)
 {
   std::string root, leaf;
   ParsePath (path, &root, &leaf);
@@ -517,7 +525,7 @@ ConfigImpl::Connect (std::string path, const CallbackBase &cb)
   container.Connect (leaf, cb);
 }
 void 
-ConfigImpl::Disconnect (std::string path, const CallbackBase &cb)
+ConfigImpl::Disconnect (const std::string& path, const CallbackBase &cb)
 {
   std::string root, leaf;
   ParsePath (path, &root, &leaf);
@@ -526,16 +534,16 @@ ConfigImpl::Disconnect (std::string path, const CallbackBase &cb)
 }
 
 Config::MatchContainer 
-ConfigImpl::LookupMatches (std::string path)
+ConfigImpl::LookupMatches (const std::string& path)
 {
   NS_LOG_FUNCTION (path);
   class LookupMatchesResolver : public Resolver 
   {
   public:
-    LookupMatchesResolver (std::string path)
+    LookupMatchesResolver (const std::string& path)
       : Resolver (path)
     {}
-    virtual void DoOne (Ptr<Object> object, std::string path) {
+    virtual void DoOne (Ptr<Object> object, const std::string& path) {
       m_objects.push_back (object);
       m_contexts.push_back (path);
     }
@@ -589,45 +597,45 @@ ConfigImpl::GetRootNamespaceObject (uint32_t i) const
 
 namespace Config {
 
-void Set (std::string path, const AttributeValue &value)
+void Set (const std::string& path, const AttributeValue &value)
 {
   Singleton<ConfigImpl>::Get ()->Set (path, value);
 }
-void SetDefault (std::string name, const AttributeValue &value)
+void SetDefault (const std::string& name, const AttributeValue &value)
 {
   AttributeList::GetGlobal ()->Set (name, value);
 }
-bool SetDefaultFailSafe (std::string name, const AttributeValue &value)
+bool SetDefaultFailSafe (const std::string& name, const AttributeValue &value)
 {
   return AttributeList::GetGlobal ()->SetFailSafe (name, value);
 }
-void SetGlobal (std::string name, const AttributeValue &value)
+void SetGlobal (const std::string& name, const AttributeValue &value)
 {
   GlobalValue::Bind (name, value);
 }
-bool SetGlobalFailSafe (std::string name, const AttributeValue &value)
+bool SetGlobalFailSafe (const std::string& name, const AttributeValue &value)
 {
   return GlobalValue::BindFailSafe (name, value);
 }
-void ConnectWithoutContext (std::string path, const CallbackBase &cb)
+void ConnectWithoutContext (const std::string& path, const CallbackBase &cb)
 {
   Singleton<ConfigImpl>::Get ()->ConnectWithoutContext (path, cb);
 }
-void DisconnectWithoutContext (std::string path, const CallbackBase &cb)
+void DisconnectWithoutContext (const std::string& path, const CallbackBase &cb)
 {
   Singleton<ConfigImpl>::Get ()->DisconnectWithoutContext (path, cb);
 }
 void 
-Connect (std::string path, const CallbackBase &cb)
+Connect (const std::string& path, const CallbackBase &cb)
 {
   Singleton<ConfigImpl>::Get ()->Connect (path, cb);
 }
 void 
-Disconnect (std::string path, const CallbackBase &cb)
+Disconnect (const std::string& path, const CallbackBase &cb)
 {
   Singleton<ConfigImpl>::Get ()->Disconnect (path, cb);
 }
-Config::MatchContainer LookupMatches (std::string path)
+Config::MatchContainer LookupMatches (const std::string& path)
 {
   return Singleton<ConfigImpl>::Get ()->LookupMatches (path);
 }
@@ -1082,7 +1090,7 @@ public:
   virtual ~ObjectVectorTraceConfigTestCase () {}
 
   void Trace (int16_t oldValue, int16_t newValue) {m_newValue = newValue;}
-  void TraceWithPath (std::string path, int16_t old, int16_t newValue) {m_newValue = newValue; m_path = path;}
+  void TraceWithPath (const std::string& path, int16_t old, int16_t newValue) {m_newValue = newValue; m_path = path;}
 
 private:
   virtual bool DoRun (void);

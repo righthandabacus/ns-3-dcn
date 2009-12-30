@@ -149,4 +149,20 @@ void flowid::Print(std::ostream& os) const
 	//os << std::hex << " ("<< hi << ","<< lo << std::dec << ")";
 };
 
+flowid::operator char*() const
+{
+	char s[17];
+	return Write(s);
+}
+
+char* flowid::Write(char* s) const
+{
+	for (int i=0; i<8; i++) {
+		s[i] = ((char*)(&hi))[i];
+		s[i+8] = ((char*)(&lo))[i];
+	};
+	s[16] = '\0';
+	return s;
+};
+
 }; // namespace ns3

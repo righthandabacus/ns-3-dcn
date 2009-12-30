@@ -54,7 +54,7 @@ public:
                      ns3::Ptr<const ns3::AttributeAccessor> spec,
                      ns3::Ptr<const ns3::AttributeChecker> checker);
   uint32_t GetAttributeN (uint16_t uid) const;
-  std::string GetAttributeName (uint16_t uid, uint32_t i) const;
+  const std::string& GetAttributeName (uint16_t uid, uint32_t i) const;
   std::string GetAttributeHelp (uint16_t uid, uint32_t i) const;
   uint32_t GetAttributeFlags (uint16_t uid, uint32_t i) const;
   ns3::Ptr<const ns3::AttributeValue> GetAttributeInitialValue (uint16_t uid, uint32_t i) const;
@@ -293,7 +293,7 @@ IidManager::GetAttributeN (uint16_t uid) const
   struct IidInformation *information = LookupInformation (uid);
   return information->attributes.size ();
 }
-std::string 
+const std::string&
 IidManager::GetAttributeName (uint16_t uid, uint32_t i) const
 {
   struct IidInformation *information = LookupInformation (uid);
@@ -435,14 +435,14 @@ TypeId::TypeId (uint16_t tid)
   : m_tid (tid)
 {}
 TypeId 
-TypeId::LookupByName (std::string name)
+TypeId::LookupByName (const std::string& name)
 {
   uint16_t uid = Singleton<IidManager>::Get ()->GetUid (name);
   NS_ASSERT_MSG (uid != 0, "Assert in TypeId::LookupByName: " << name << " not found");
   return TypeId (uid);
 }
 bool
-TypeId::LookupByNameFailSafe (std::string name, TypeId *tid)
+TypeId::LookupByNameFailSafe (const std::string& name, TypeId *tid)
 {
   uint16_t uid = Singleton<IidManager>::Get ()->GetUid (name);
   if (uid == 0)
@@ -454,7 +454,7 @@ TypeId::LookupByNameFailSafe (std::string name, TypeId *tid)
 }
 
 bool
-TypeId::LookupAttributeByFullName (std::string fullName, struct TypeId::AttributeInfo *info)
+TypeId::LookupAttributeByFullName (const std::string& fullName, struct TypeId::AttributeInfo *info)
 {
   std::string::size_type pos = fullName.rfind ("::");
   if (pos == std::string::npos)
@@ -483,7 +483,7 @@ TypeId::GetRegistered (uint32_t i)
 }
 
 bool
-TypeId::LookupAttributeByName (std::string name, struct TypeId::AttributeInfo *info) const
+TypeId::LookupAttributeByName (const std::string& name, struct TypeId::AttributeInfo *info) const
 {
   TypeId tid;
   TypeId nextTid = *this;
@@ -491,7 +491,7 @@ TypeId::LookupAttributeByName (std::string name, struct TypeId::AttributeInfo *i
     tid = nextTid;
     for (uint32_t i = 0; i < tid.GetAttributeN (); i++)
       {
-        std::string paramName = tid.GetAttributeName (i);
+        const std::string& paramName = tid.GetAttributeName (i);
         if (paramName == name)
           {
             info->accessor = tid.GetAttributeAccessor (i);
@@ -513,7 +513,7 @@ TypeId::SetParent (TypeId tid)
   return *this;
 }
 TypeId 
-TypeId::SetGroupName (std::string groupName)
+TypeId::SetGroupName (const std::string& groupName)
 {
   Singleton<IidManager>::Get ()->SetGroupName (m_tid, groupName);
   return *this;
@@ -610,11 +610,10 @@ TypeId::GetAttributeN (void) const
   uint32_t n = Singleton<IidManager>::Get ()->GetAttributeN (m_tid);
   return n;
 }
-std::string 
+const std::string&
 TypeId::GetAttributeName (uint32_t i) const
 {
-  std::string name = Singleton<IidManager>::Get ()->GetAttributeName (m_tid, i);
-  return name;
+  return Singleton<IidManager>::Get ()->GetAttributeName (m_tid, i);
 }
 std::string 
 TypeId::GetAttributeHelp (uint32_t i) const

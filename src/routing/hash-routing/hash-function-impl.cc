@@ -21,6 +21,7 @@
  
 #include "hash-function-impl.h"
 #include "md5sum.h"
+#include "hsieh.h"
 #include <sstream>
 
 namespace ns3 {
@@ -28,12 +29,12 @@ namespace ns3 {
 uint64_t HashMD5::operator() (uint32_t salt, flowid tuple) const
 {
 	md5sum MD5;		// MD5 engine
-	char x[5];		// Stringify the salt
+	char x[4+17];		// Stringify the salt
 	for (int i=0;i<4;i++) {
 		x[i] = ((char*)(&salt))[i];
 	};
-	x[4]='\0';
-	MD5 << x << (char*)tuple;	// Feed salt and flowid into MD5
+	tuple.Write(&x[4]);
+	MD5 << x;		// Feed salt and flowid into MD5
 
 	// Convert 128-bit MD5 digest into 64-bit unsigned integer
 	unsigned char* b = MD5.getDigest();
@@ -43,6 +44,16 @@ uint64_t HashMD5::operator() (uint32_t salt, flowid tuple) const
 		val |= b[i] ^ b[15-i];
 	};
 	return val;
+}
+
+uint64_t HashHsieh::operator() (uint32_t salt, flowid tuple) const
+{
+	char x[4+17];		// 4-byte for salt, 16-byte/128-bit for tuple
+	for (int i=0;i<4;i++) { // Stringify the salt
+		x[i] = ((char*)(&salt))[i];
+	};
+	tuple.Write(&x[4]);
+	return HsiehHash (x, 4+16);
 }
 
 };

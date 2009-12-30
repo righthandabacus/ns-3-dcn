@@ -208,7 +208,7 @@ int main (int argc, char *argv[])
 //	ascii.open (outputfile);
 //	PointToPointHelper::EnableAsciiAll (ascii);
 	std::cout << std::setprecision(9) << std::fixed;
-	FatTreeHelper::EnableAsciiAll (std::cout);
+	fattree->EnableAsciiAll (std::cout);
 //	LogComponentEnableAll(LOG_LEVEL_ALL);
 
 	// Run the simulation

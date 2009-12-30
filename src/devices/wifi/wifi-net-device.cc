@@ -222,10 +222,10 @@ WifiNetDevice::IsBroadcast (void) const
 {
   return true;
 }
-Address 
+const Address&
 WifiNetDevice::GetBroadcast (void) const
 {
-  return Mac48Address::GetBroadcast ();
+  return Mac48Bcast;
 }
 bool 
 WifiNetDevice::IsMulticast (void) const

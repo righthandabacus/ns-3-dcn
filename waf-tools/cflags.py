@@ -140,6 +140,7 @@ profiles = {
 	'default': [2, 1, 1],
 	'debug': [0, 2, 3],
 	'release': [3, 1, 0],
+	'profile': [3, 2, 3],
 	}
 
 default_profile = 'default'

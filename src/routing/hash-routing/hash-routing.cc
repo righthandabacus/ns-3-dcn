@@ -245,15 +245,17 @@ HashRouting::IsLocal (const Ipv4Address& dest)
 		NS_LOG_LOGIC (dest <<" is broadcast address");
 		return true;
 	};
-	for (uint32_t j = 0; j < m_ipv4->GetNInterfaces (); j++) {
-		for (uint32_t i = 0; i < m_ipv4->GetNAddresses (j); i++) {
-			Ipv4Address addr = m_ipv4->GetAddress (j, i).GetLocal();
-			if (addr.IsEqual (dest)) {
-				NS_LOG_LOGIC (addr <<" is local to iface "<< j <<" addr "<< i);
-				return true;
+	uint32_t destAddr = dest.Get();
+	if (localAddrCache.size() == 0) {
+		for (uint32_t j = 0; j < m_ipv4->GetNInterfaces (); j++) {
+			for (uint32_t i = 0; i < m_ipv4->GetNAddresses (j); i++) {
+				localAddrCache.insert( m_ipv4->GetAddress (j, i).GetLocal().Get() );
 			}
 		}
-	}
+	};
+	if (localAddrCache.find(destAddr) != localAddrCache.end()) {
+		return true;
+	};
 	NS_LOG_LOGIC ("Address "<< dest << " is not local");
 	return false;
 }
@@ -352,7 +354,7 @@ HashRouting::NeedReroute(const flowid& fid, uint32_t cp)
 			(*i)->last = Simulator::Now();
 			if (m_intelRR) (*i)->congPoints.insert(cp);
 			NS_LOG_LOGIC("Flow "<< fid <<" set with count "<< (*i)->count <<", thresh="<< m_rrThresh);
-			if ((*i)->count > m_rrThresh) {
+			if ((*i)->count >= m_rrThresh) {
 				(*i)->count = 0;
 				return true;
 			} else {

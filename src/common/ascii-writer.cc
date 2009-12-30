@@ -62,25 +62,8 @@ AsciiWriter::~AsciiWriter (void)
 void
 AsciiWriter::WritePacket (enum Type type, std::string message, Ptr<const Packet> packet)
 {
-  std::string typeString;
-  switch (type)
-    {
-    case ENQUEUE:
-      typeString = "+";
-      break;
-    case DEQUEUE:
-      typeString = "-";
-      break;
-    case RX:
-      typeString = "r";
-      break;
-    case TX:
-      typeString = "t";
-      break;
-    case DROP:
-      typeString = "d";
-      break;
-    }
+  const char* typechar[] = { "+" /* ENQUEUE */, "-" /* DEQUEUE */ , "d" /* DROP */, "t" /* TX */, "r" /* RX */ };
+  std::string typeString = typechar[type];
   NS_LOG_FUNCTION (this << typeString << message);
   *m_writer << typeString << " " << Simulator::Now ().GetSeconds () << " "
             << message << " " << *packet << std::endl;

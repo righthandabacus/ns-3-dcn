@@ -196,7 +196,7 @@ void
 Ipv4Header::Print (std::ostream &os) const
 {
   // ipv4, right ?
-  std::string flags;
+  const char* flags;
   if (m_flags == 0)
     {
       flags = "none";
@@ -218,16 +218,20 @@ Ipv4Header::Print (std::ostream &os) const
     {
       flags = "XX";
     }
-  os << "tos 0x" << std::hex << m_tos << std::dec << " "
-     << "ttl " << m_ttl << " "
-     << "id " << m_identification << " "
-     << "protocol " << m_protocol << " "
-     << "offset " << m_fragmentOffset << " "
-     << "flags [" << flags << "] "
-     << "length: " << (m_payloadSize + 5 * 4)
+  char buf[1024];
+  sprintf(buf,"tos 0x%x ttl %d id %d protocol %d offset %d flags [%s] length: %d ",m_tos,m_ttl,m_identification,m_protocol,m_fragmentOffset,flags,(m_payloadSize+5*4));
+  os << buf << m_source << " > " << m_destination;
+#if 0
+  os << "tos 0x" << std::hex << m_tos << std::dec
+     << " ttl " << m_ttl
+     << " id " << m_identification
+     << " protocol " << m_protocol
+     << " offset " << m_fragmentOffset
+     << " flags [" << flags << "] length: " << (m_payloadSize + 5 * 4)
      << " " 
      << m_source << " > " << m_destination
     ;
+#endif
 }
 uint32_t 
 Ipv4Header::GetSerializedSize (void) const

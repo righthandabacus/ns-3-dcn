@@ -89,7 +89,7 @@ PauseHeader::GetInstanceTypeId (void) const
 }
 void PauseHeader::Print (std::ostream &os) const
 {
-  os << "pause=" << m_time << "us, qlen=" << m_qlen;
+  os << "pause=" << m_time << "us, qlen=" << m_qlen <<", qidx=" << m_qindex;
 }
 uint32_t PauseHeader::GetSerializedSize (void)  const
 {

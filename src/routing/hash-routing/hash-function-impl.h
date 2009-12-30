@@ -33,6 +33,13 @@ public:
 	virtual ~HashMD5() {};
 };
 
+class HashHsieh : public HashFunction
+{
+public:
+	virtual uint64_t operator() (uint32_t salt, flowid tuple) const;
+	virtual ~HashHsieh() {};
+};
+
 }; // namespace ns3
 
 #endif

@@ -62,14 +62,14 @@ public:
    * This method cannot fail: it will crash if the input 
    * name is not a valid TypeId name.
    */
-  static TypeId LookupByName (std::string name);
+  static TypeId LookupByName (const std::string& name);
   /**
    * \param name the name of the requested TypeId
    * \param tid a pointer to the TypeId instance where the 
    *        result of this function should be stored.
    * \returns true if the requested name was found, false otherwise.
    */
-  static bool LookupByNameFailSafe (std::string name, TypeId *tid);
+  static bool LookupByNameFailSafe (const std::string& name, TypeId *tid);
 
   /**
    * \returns the number of TypeId instances registered.
@@ -137,7 +137,7 @@ public:
    * \returns the name associated to the attribute whose
    *          index is i.
    */
-  std::string GetAttributeName (uint32_t i) const;
+  const std::string& GetAttributeName (uint32_t i) const;
   /**
    * \param i index into attribute array.
    * \returns the help text associated to the attribute whose
@@ -233,7 +233,7 @@ public:
    * group together types according to a user-specific grouping
    * scheme.
    */
-  TypeId SetGroupName (std::string groupName);
+  TypeId SetGroupName (const std::string& groupName);
 
   /**
    * \returns this TypeId instance
@@ -313,7 +313,7 @@ public:
    *        where the result value of this method will be stored.
    * \returns true if the requested attribute could be found, false otherwise.
    */
-  bool LookupAttributeByName (std::string name, struct AttributeInfo *info) const;
+  bool LookupAttributeByName (const std::string& name, struct AttributeInfo *info) const;
   /**
    * \param name the name of the requested trace source
    * \returns the trace source accessor which can be used to connect and disconnect
@@ -330,7 +330,7 @@ public:
    *        where the result value of this method will be stored.
    * \returns the Accessor associated to the requested attribute
    */
-  static bool LookupAttributeByFullName (std::string fullName, struct AttributeInfo *info);
+  static bool LookupAttributeByFullName (const std::string& fullName, struct AttributeInfo *info);
 
   /**
    * \returns the internal integer which uniquely identifies this

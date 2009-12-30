@@ -41,25 +41,16 @@ public:
 	void SetDAddr(uint32_t daddr);
 	void SetSPort(uint16_t sport);
 	void SetDPort(uint16_t dport);
-	inline operator char*() const;
 	void Print(std::ostream& os) const;
 	uint32_t GetSAddr() const;
 	uint32_t GetDAddr() const;
 	uint16_t GetSPort() const;
 	uint16_t GetDPort() const;
 	uint8_t GetProtocol() const;
+	char* Write(char* s) const;
+	operator char*() const;
 protected:
 	uint64_t hi,lo;
-};
-
-inline flowid::operator char*() const {
-	static char x[17];
-	for (int i=0; i<8; i++) {
-		x[i] = ((char*)(&hi))[i];
-		x[i+8] = ((char*)(&lo))[i];
-	};
-	x[16] = '\0';
-	return x;
 };
 
 // Report equivalence of flow IDs

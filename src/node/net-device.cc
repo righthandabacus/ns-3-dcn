@@ -29,6 +29,8 @@ namespace ns3 {
 
 NS_OBJECT_ENSURE_REGISTERED (NetDevice);
 
+const Address NetDevice::Mac48Bcast = Mac48Address("ff:ff:ff:ff:ff:ff");
+
 TypeId NetDevice::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::NetDevice")

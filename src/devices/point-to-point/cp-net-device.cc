@@ -94,8 +94,8 @@ CpNetDevice::Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNumb
 	Ipv4Address myAddr = m_node->GetObject<Ipv4>()->GetAddress(m_ifIndex,0).GetLocal();
 	flowid fid = flowid(p);
 	// Sanity check: I don't generate CN to myself and no CN for CN
-	if (myAddr != sAddr && ipv4h.GetProtocol() < 0xFE) {
-		uint16_t qFb = ShouldSendCN(p);	// Quantized feedback value
+	if (ipv4h.GetProtocol() < 0xFE && myAddr != sAddr) {
+		uint16_t qFb = ShouldSendCN(fid, p->GetSize());	// Quantized feedback value
 		if (qFb == 0) return true;
 		NS_LOG_INFO("Generate congestion notification for " << fid);
 		p = Create<Packet>(0);
@@ -106,6 +106,7 @@ CpNetDevice::Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNumb
 		head.SetSource(myAddr);
 		head.SetProtocol(0xFF);
 		head.SetTtl(64);
+		head.SetPayloadSize(p->GetSize());
 		head.SetIdentification(UniformVariable(0,65536).GetValue());
 		p->AddHeader(head);
 		AddHeader(p, protocolNumber);	// Attach PPP header
@@ -116,11 +117,11 @@ CpNetDevice::Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNumb
 };
 
 uint8_t
-CpNetDevice::ShouldSendCN(Ptr<Packet> packet)
+CpNetDevice::ShouldSendCN(flowid& fid, uint32_t pktSize)
 {
 	// Check if we reached the mark time
-	unsigned qIndex = Hash(flowid(packet)) % qCnt;
-	m_timeToMark[qIndex] -= packet->GetSize() * m_speedup;
+	unsigned qIndex = Hash(fid) % qCnt;
+	m_timeToMark[qIndex] -= pktSize * m_speedup;
 	NS_LOG_INFO("Queue "<< qIndex <<" TimeToMark "<< m_timeToMark[qIndex]
 		<<" qlen="<< m_queue[qIndex]->GetNPackets() <<" Q_old="<< m_qOld[qIndex]);
 	if (m_timeToMark[qIndex] > 0) {

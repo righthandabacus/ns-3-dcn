@@ -204,10 +204,10 @@ VirtualNetDevice::IsBroadcast (void) const
   return true;
 }
 
-Address
+const Address&
 VirtualNetDevice::GetBroadcast (void) const
 {
-  return Mac48Address ("ff:ff:ff:ff:ff:ff");
+  return Mac48Bcast;
 }
 
 bool

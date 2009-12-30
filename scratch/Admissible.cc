@@ -31,7 +31,7 @@ using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE ("SimulationScript");
 
-const char outputfile[] = "SimulationOutput.tr";
+const char outputfile[] = "Admissible.tr";
 const uint16_t port = 9;   // Discard port (RFC 863)
 
 std::vector<ApplicationContainer> apps(54);
@@ -40,7 +40,6 @@ int main (int argc, char *argv[])
 {
 	// Turn on logging
 //	LogComponentEnable("SimulationScript", LOG_LEVEL_ALL);
-	LogComponentEnable("MmppApplication", LOG_LEVEL_ALL);
 	LogComponentEnableAll(LOG_PREFIX_TIME);
 	LogComponentEnableAll(LOG_PREFIX_FUNC);
 //	LogComponentPrintList();
@@ -49,15 +48,16 @@ int main (int argc, char *argv[])
 	double tcp=0;
 	bool rr=1;
 	double linkBw = 100e6;		// Link bandwidth in bps
-	double linkDelay = 250e-9;	// Link delay in seconds (5ns = 1m wire)
+	double linkDelay = 5e-9;	// Link delay in seconds (5ns = 1m wire)
 	unsigned size = 3;		// Fat tree size
 	double percent = 0.8;		// Percent of bandwidth to use per sending host
-	uint64_t bytes = 5e6;		// Number of bytes to send per flow
+	uint64_t bytes = 0;		// Number of bytes to send per flow
 	int maxflow = 10;		// Maximum number of flows per node
-	int pausetime = 250;		// Pause duration in us
+	int pausetime = 25;		// Pause duration in us
 	bool dryrun=0;			// Fake the simulation or not
 	bool cbr=0;			// Use CBR traffic?
-	uint32_t speedup = 1;		// Speedup factor
+	uint32_t speedup = 1;		// Speedup factor (for 802.1Qau)
+	unsigned stoptime = 0;		// Time to stop applications
 
 	CommandLine cmd;
 	cmd.AddValue("speedup","Speed up factor of 802.1Qau",speedup);
@@ -73,15 +73,17 @@ int main (int argc, char *argv[])
 	cmd.AddValue("pc","Percentage of bandwidth to use per sending host",percent);
 	cmd.AddValue("maxflow","Maximum number of flows per node",maxflow);
 	cmd.AddValue("pt","Pause duration in microseconds",pausetime);
+	cmd.AddValue("stop","Time to stop the flows", stoptime);
 	cmd.Parse (argc, argv);
 
-	Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue(1460));
+	Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue(1000));
 	Config::SetDefault ("ns3::RpNetDevice::BC", UintegerValue(bc));
 	Config::SetDefault ("ns3::QbbNetDevice::PauseTime", UintegerValue(pausetime));
 	Config::SetDefault ("ns3::QbbNetDevice::BufferSize", UintegerValue(131072));	// 128KiB
 	Config::SetDefault ("ns3::RpNetDevice::MinRate", DataRateValue(DataRate("1Mbps")));
 	Config::SetDefault ("ns3::CpNetDevice::SpeedUp", UintegerValue(speedup));
-	if (!rr) Config::SetDefault ("ns3::HashRouting::EnableReroute", BooleanValue(false));
+	Config::SetDefault ("ns3::HashRouting::IntelReroute", BooleanValue(false));
+	Config::SetDefault ("ns3::HashRouting::EnableReroute", BooleanValue(rr != 0));
 
 	// Build the fat tree network
 	Ptr<FatTreeHelper> fattree = CreateObject<FatTreeHelper>(size);
@@ -215,7 +217,7 @@ int main (int argc, char *argv[])
 				// Use MMPP helper to create an MMPP traffic generator
 				Ptr<RateVector> rateVector = CreateObject<RateVector>();
 				rateVector->push_back(DataRate(1.0*(*sizeIt)));
-				rateVector->push_back(DataRate(2.0*(*sizeIt)));
+				rateVector->push_back(DataRate(1.5*(*sizeIt)));
 				rateVector->push_back(DataRate(0.5*(*sizeIt)));
 				MmppHelper mmpp(socketSpec, Address(InetSocketAddress(addrs[*destIt], port)));
 				mmpp.SetAttribute ("GenMatrix", PointerValue(generator));
@@ -225,12 +227,12 @@ int main (int argc, char *argv[])
 				app = mmpp.Install(fattree->HostNodes().Get(src));
 			};
 			// Create a flow
-			double desync = UniformVariable(0,1).GetValue();
+			double desync = UniformVariable(0,0.1).GetValue();
 			app.Start(Seconds(desync));
 			NS_LOG_INFO((useTcp?"TCP":"UDP") << " flow "<< addrs[src] <<" -> "<< addrs[*destIt]
 				<<" ("<< src+5*size*size <<" -> "<< *destIt+5*size*size <<") of rate "
 				<< *sizeIt/1e6 <<"Mbps starts at "<< desync <<"s");
-			//app.Stop(Seconds(desync+DURATION));
+			if (stoptime) app.Stop(Seconds(stoptime));
 
 			++sizeIt;
 			++destIt;
@@ -250,17 +252,30 @@ int main (int argc, char *argv[])
 	};
 
 	// Collect packet trace
+	std::cout << std::setprecision(9) << std::fixed;
+	std::cerr << std::setprecision(9) << std::fixed;
+	std::clog << std::setprecision(9) << std::fixed;
 //	PointToPointHelper::EnablePcapAll ("FatTreeSimulation");
 //	std::ofstream ascii;
 //	ascii.open (outputfile);
-//	PointToPointHelper::EnableAsciiAll (ascii);
-	std::cout << std::setprecision(9) << std::fixed;
-	FatTreeHelper::EnableAsciiAll (std::cout);
+	fattree->EnableAsciiAll (std::cout);
 //	LogComponentEnableAll(LOG_LEVEL_ALL);
+	LogComponentDisable("Buffer", LOG_LEVEL_ALL);
+	LogComponentDisable("PacketMetadata", LOG_LEVEL_ALL);
+	LogComponentDisable("ByteTagList", LOG_LEVEL_ALL);
+	LogComponentDisable("Queue", LOG_LEVEL_ALL);
+	LogComponentDisable("MapScheduler", LOG_LEVEL_ALL);
+//	LogComponentEnable("QbbNetDevice", LOG_LEVEL_ALL);
+//	LogComponentEnable("PointToPointNetDevice", LOG_LEVEL_ALL);
+//	LogComponentEnable("RpNetDevice", LOG_LEVEL_ALL);
+//	LogComponentEnable("CpNetDevice", LOG_LEVEL_ALL);
+//	LogComponentEnable("MmppApplication", LOG_LEVEL_ALL);
+//	LogComponentEnable("TcpSocketImpl", LOG_LEVEL_ALL);
+//	LogComponentEnable("TcpRxBuffer", LOG_LEVEL_ALL);
 
 	// Run the simulation
 	NS_LOG_INFO("Run Simulation.");
-	Simulator::Stop(Seconds(65535));
+	Simulator::Stop(Seconds(stoptime?2*stoptime:1000));
 	if (!dryrun) Simulator::Run ();
 	Simulator::Destroy ();
 	NS_LOG_INFO("Done.");

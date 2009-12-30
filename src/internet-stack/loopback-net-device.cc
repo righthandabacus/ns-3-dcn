@@ -134,11 +134,11 @@ LoopbackNetDevice::IsBroadcast (void) const
   return true;
 }
 
-Address
+const Address&
 LoopbackNetDevice::GetBroadcast (void) const
 {
   // This is typically set to all zeros rather than all ones in real systems
-  return Mac48Address ("00:00:00:00:00:00");
+  return Mac48Bcast;
 }
 
 bool 

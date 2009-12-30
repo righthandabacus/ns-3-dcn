@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include "ns3/qbb-net-device.h"
 #include "ns3/md5sum.h"
+#include "ns3/hsieh.h"
 #include "ns3/log.h"
 #include "ns3/boolean.h"
 #include "ns3/uinteger.h"
@@ -128,8 +129,7 @@ QbbNetDevice::DequeueAndTransmit (void)
 	// Look for a packet in a round robin
 	unsigned qIndex = m_lastQ;
 	for (unsigned i=0; i<qCnt; i++) {
-		qIndex++;
-		if (qIndex >= qCnt) qIndex = 0;
+		if (++qIndex >= qCnt) qIndex = 0;
 		if (m_paused[qIndex] && m_qbbEnabled) continue;
 		Ptr<Packet> p = m_queue[qIndex]->Dequeue();
 		if (p != 0) {
@@ -175,7 +175,7 @@ QbbNetDevice::Receive (Ptr<Packet> packet)
 	Ptr<Packet> p = packet->Copy();
 	ProcessHeader(p, protocol);
 	Ipv4Header ipv4h;
-	p->RemoveHeader(ipv4h);
+	p->PeekHeader(ipv4h);
 
 	// If this is a Pause, stop the corresponding queue
 	if (ipv4h.GetProtocol() != 0xFE) {
@@ -189,6 +189,7 @@ QbbNetDevice::Receive (Ptr<Packet> packet)
 		if (!m_qbbEnabled) return;
 		// Read the pause headers
 		PauseHeader pauseh;
+		p->RemoveHeader(ipv4h);
 		p->RemoveHeader(pauseh);
 		unsigned qIndex = pauseh.GetQIndex();
 		// Pause and schedule the resume event
@@ -261,6 +262,7 @@ QbbNetDevice::CheckQueueFull(unsigned qIndex)
 		ipv4h.SetProtocol(0xFE);
 		ipv4h.SetSource(m_node->GetObject<Ipv4>()->GetAddress(m_ifIndex,0).GetLocal());
 		ipv4h.SetDestination(Ipv4Address("255.255.255.255"));
+  		ipv4h.SetPayloadSize (p->GetSize());
 		ipv4h.SetTtl(1); 
 		ipv4h.SetIdentification(UniformVariable(0,65536).GetValue());
 		p->AddHeader(ipv4h);
@@ -272,7 +274,7 @@ QbbNetDevice::CheckQueueFull(unsigned qIndex)
 				continue;
 			};
 			Ptr<Packet> pCopy = p->Copy();
-			device->Send(pCopy, Mac48Address("01:00:00:00:00:00"), 0x0800);
+			device->Send(pCopy, Mac48Bcast, 0x0800);
 		};
 		NS_LOG_LOGIC("Node "<< m_node->GetId() <<" device "<< m_ifIndex <<" queue "<< qIndex <<
 				" send PAUSE at "<< Simulator::Now().GetSeconds());
@@ -299,6 +301,8 @@ QbbNetDevice::IsLocal(const Ipv4Address& addr) const
 uint64_t
 QbbNetDevice::Hash(const flowid& f)
 {
+	return HsiehHash((char*)f, 16);
+#if 0
 	md5sum MD5;             // MD5 engine
 	MD5 << (char*)f;    // Feed flowid into MD5
 
@@ -310,6 +314,7 @@ QbbNetDevice::Hash(const flowid& f)
 		val |= b[i] ^ b[15-i];
 	};
 	return val;
+#endif
 };
 
 uint32_t

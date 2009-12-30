@@ -234,7 +234,7 @@ public:
   virtual void AddLinkChangeCallback (Callback<void> callback);
 
   virtual bool IsBroadcast (void) const;
-  virtual Address GetBroadcast (void) const;
+  virtual const Address& GetBroadcast (void) const;
 
   virtual bool IsMulticast (void) const;
   virtual Address GetMulticast (Ipv4Address multicastGroup) const;
@@ -257,6 +257,7 @@ public:
   virtual void SetPromiscReceiveCallback (PromiscReceiveCallback cb);
   virtual bool SupportsSendFrom (void) const;
 
+  void CacheRemote();
 protected:
 
   virtual void DoDispose (void);
@@ -522,6 +523,7 @@ protected:
 
   Ptr<Node> m_node;
   Mac48Address m_address;
+  Address m_remoteAddr;
   NetDevice::ReceiveCallback m_rxCallback;
   NetDevice::PromiscReceiveCallback m_promiscCallback;
   uint32_t m_ifIndex;

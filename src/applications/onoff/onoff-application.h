@@ -114,6 +114,8 @@ private:
   void StartSending();
   void StopSending();
   void SendPacket();
+  void ResumeSend(Ptr<Socket> sock, uint32_t txAvail);
+  void SendPendingPacket(uint32_t txAvail);
 
   Ptr<Socket>     m_socket;       // Associated socket
   Address         m_peer;         // Peer address
@@ -126,6 +128,7 @@ private:
   Time            m_lastStartTime;// Time last packet sent
   uint32_t        m_maxBytes;     // Limit total number of bytes sent
   uint32_t        m_totBytes;     // Total bytes sent so far
+  uint32_t        m_pendingBytes; // Total bytes sent so far
   EventId         m_startStopEvent;     // Event id for next start or stop event
   EventId         m_sendEvent;    // Eventid of pending "send packet" event
   bool            m_sending;      // True if currently in sending state

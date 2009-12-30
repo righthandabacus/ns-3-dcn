@@ -51,7 +51,7 @@ public:
 	 */
 	virtual bool Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNumber);
 protected:
-	uint8_t ShouldSendCN(Ptr<Packet> packet);
+	uint8_t ShouldSendCN(flowid& fid, uint32_t pktSize);
 	uint32_t m_qeq;
 	uint32_t m_speedup;
 	double m_w;

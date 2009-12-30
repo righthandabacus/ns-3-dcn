@@ -123,7 +123,7 @@ public:
   virtual void AddLinkChangeCallback (Callback<void> callback);
 
   virtual bool IsBroadcast (void) const;
-  virtual Address GetBroadcast (void) const;
+  virtual const Address& GetBroadcast (void) const;
 
   virtual bool IsMulticast (void) const;
 

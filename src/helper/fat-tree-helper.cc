@@ -22,6 +22,7 @@
 #define __STDC_LIMIT_MACROS 1
 #include <sstream>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "fat-tree-helper.h"
 
@@ -343,7 +344,7 @@ FatTreeHelper::EnableAscii (std::ostream &os, uint32_t nodeid, uint32_t deviceid
 }
 
 void 
-FatTreeHelper::EnableAscii (std::ostream &os, NetDeviceContainer d)
+FatTreeHelper::EnableAscii (std::ostream &os, NetDeviceContainer& d)
 {
 	for (NetDeviceContainer::Iterator i = d.Begin (); i != d.End (); ++i) {
 		Ptr<NetDevice> dev = *i;
@@ -352,7 +353,7 @@ FatTreeHelper::EnableAscii (std::ostream &os, NetDeviceContainer d)
 }
 
 void
-FatTreeHelper::EnableAscii (std::ostream &os, NodeContainer n)
+FatTreeHelper::EnableAscii (std::ostream &os, NodeContainer& n)
 {
 	NetDeviceContainer devs;
 	for (NodeContainer::Iterator i = n.Begin (); i != n.End (); ++i) {
@@ -367,7 +368,7 @@ FatTreeHelper::EnableAscii (std::ostream &os, NodeContainer n)
 void
 FatTreeHelper::EnableAsciiAll (std::ostream &os)
 {
-	EnableAscii (os, NodeContainer::GetGlobal ());
+	EnableAscii (os, m_node);
 }
 
 void
@@ -392,54 +393,49 @@ std::string
 FatTreeHelper::PathTranslate(const std::string& path)
 {
 	// path is of the form "/NodeList/nn/DeviceList/nn/$ns3::QbbNetDevice/...",
-	// here we extract the node number
+	// here we extract the node number, in a non-robust way for performance reason
 	size_t pos1n = path.find('/',1) + 1;
 	size_t pos2n = path.find('/',pos1n);
-	std::istringstream nodeNumStr( path.substr(pos1n, pos2n-pos1n) );
-	unsigned nodeNum;
-	if ( (nodeNumStr >> nodeNum).fail() ) {
-		NS_ABORT_MSG("Cannot find the node number from the context path: " << path);
-	};
+	unsigned nodeNum = atoi( path.substr(pos1n, pos2n-pos1n).c_str() );
+	//if ( (std::istringstream(path.substr(pos1n, pos2n-pos1n)) >> nodeNum).fail() ) {
+	//	NS_ABORT_MSG("Cannot find the node number from the context path: " << path);
+	//};
+
 	// here we extract the device number
 	size_t pos1d = path.find('/',pos2n+1) + 1;
 	size_t pos2d = path.find('/',pos1d);
-	std::istringstream devNumStr( path.substr(pos1d, pos2d-pos1d) );
-	unsigned devNum;
-	if ( (devNumStr >> devNum).fail() ) {
-		NS_ABORT_MSG("Cannot find the device number from the context path: " << path << ", what we have is " << path.substr(pos1d, pos2d-pos1d));
-	};
+	unsigned devNum = atoi( path.substr(pos1d, pos2d-pos1d).c_str() );
+	//if ( (std::istringstream(path.substr(pos1d, pos2d-pos1d)) >> devNum).fail() ) {
+	//	NS_ABORT_MSG("Cannot find the device number from the context path: " << path << ", what we have is " << path.substr(pos1d, pos2d-pos1d));
+	//};
+
 	// and prepare with the tail
 	size_t pos1t = path.find('/',pos2d+1);
 	size_t pos2t = path.size();
 	std::string tail( path.substr(pos1t, pos2t-pos1t) );
 	// convert the node number into location
 	const unsigned N = m_size;
+	std::ostringstream newpath;
 	if (nodeNum < 4*N*N) {
 		// Edge or aggregation nodes
 		bool isEdge = ((nodeNum/N) % 2 == 0);
 		unsigned subtreeNum = nodeNum / (2*N);
 		unsigned switchNum = nodeNum % N;
-		std::ostringstream newpath;
 		newpath << "/S" << subtreeNum << (isEdge? "E":"A") << switchNum << "D" << devNum << tail;
-		return newpath.str();
 	} else if (nodeNum < 5*N*N) {
 		// Core nodes
 		unsigned coreNum = nodeNum - 4*N*N;
-		std::ostringstream newpath;
 		newpath << "/C" << coreNum << "D" << devNum << tail;
-		return newpath.str();
 	} else if (nodeNum < 5*N*N + 2*N*N*N) {
 		// Host nodes
 		unsigned subtreeNum = (nodeNum - 5*N*N) / (N*N);
 		unsigned switchNum = ((nodeNum - 5*N*N) / N) % N;
 		unsigned hostNum = (nodeNum - 5*N*N) % N;
-		std::ostringstream newpath;
 		newpath << "/S" << subtreeNum << "E" << switchNum << "H" << hostNum << tail;
-		return newpath.str();
 	} else {
 		NS_ABORT_MSG("Node number exceeds range: " << path);
 	};
-	return path; // to mute the compiler
+	return newpath.str();
 };
 
 }//namespace

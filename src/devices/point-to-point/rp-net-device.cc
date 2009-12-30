@@ -108,7 +108,10 @@ RpNetDevice::Receive (Ptr<Packet> packet)
 	Ipv4Header ipv4h;
 	p->PeekHeader(ipv4h);
 
-	if (ipv4h.GetProtocol() != 0xFF) {
+	if (ipv4h.GetProtocol() <= 0x7F) {
+		// Short-cut for performance reasons
+		PointToPointNetDevice::Receive(packet);
+	} else if (ipv4h.GetProtocol() != 0xFF) {
 		// Not CN packet, let parent class handle it
 		QbbNetDevice::Receive(packet);
 	} else {
@@ -118,6 +121,7 @@ RpNetDevice::Receive (Ptr<Packet> packet)
 		m_promiscSnifferTrace (packet);
 		m_phyRxEndTrace (packet);
 		m_macRxTrace(p);
+		return;
 
 		// Then, extract data from the congestion packet.
 		// We assume, without verify, the packet is destinated to me
@@ -219,7 +223,7 @@ RpNetDevice::DequeueAndTransmit()
 		m_txMachineState = READY;
 		// Update state variables if necessary
 		if (m_rate[qIndex] == m_bps) continue;
-		m_txBytes[qIndex] -= pktSize;
+		m_txBytes[qIndex] -= packet->GetSize();
 		NS_LOG_INFO("txCount for flow "<< qIndex <<" is "<< m_txBytes[qIndex]);
 		Time nextSend = m_tInterframeGap + Seconds(m_bps.CalculateTxTime(creditsDue));
 		m_nextAvail[qIndex] = Simulator::Now() + nextSend;

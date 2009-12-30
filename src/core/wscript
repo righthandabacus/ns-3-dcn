@@ -35,7 +35,7 @@ int main ()
             conf.env['CCFLAGS_PTHREAD'] = '-pthread'
             conf.env['LINKFLAGS_PTHREAD'] = '-pthread'
 
-    conf.env['ENABLE_THREADING'] = have_pthread
+    conf.env['ENABLE_THREADING'] = have_pthread and Options.options.enable_thread
 
     conf.report_optional_feature("Threading", "Threading Primitives",
                                  conf.env['ENABLE_THREADING'],

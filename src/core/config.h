@@ -44,7 +44,7 @@ namespace Config {
  * match the input path and will then set their value to the input
  * value.
  */
-void Set (std::string path, const AttributeValue &value);
+void Set (const std::string& path, const AttributeValue &value);
 /**
  * \param name the full name of the attribute
  * \param value the value to set.
@@ -53,7 +53,7 @@ void Set (std::string path, const AttributeValue &value);
  * matching attribute. This method cannot fail: it will
  * crash if the input attribute name or value is invalid.
  */
-void SetDefault (std::string name, const AttributeValue &value);
+void SetDefault (const std::string& name, const AttributeValue &value);
 /**
  * \param name the full name of the attribute
  * \param value the value to set.
@@ -62,21 +62,21 @@ void SetDefault (std::string name, const AttributeValue &value);
  * This method overrides the initial value of the 
  * matching attribute. 
  */
-bool SetDefaultFailSafe (std::string name, const AttributeValue &value);
+bool SetDefaultFailSafe (const std::string& name, const AttributeValue &value);
 /**
  * \param name the name of the requested GlobalValue.
  * \param value the value to set
  *
  * This method is equivalent to GlobalValue::Bind
  */
-void SetGlobal (std::string name, const AttributeValue &value);
+void SetGlobal (const std::string& name, const AttributeValue &value);
 /**
  * \param name the name of the requested GlobalValue.
  * \param value the value to set
  *
  * This method is equivalent to GlobalValue::BindFailSafe
  */
-bool SetGlobalFailSafe (std::string name, const AttributeValue &value);
+bool SetGlobalFailSafe (const std::string& name, const AttributeValue &value);
 /**
  * \param path a path to match trace sources.
  * \param cb the callback to connect to the matching trace sources.
@@ -85,14 +85,14 @@ bool SetGlobalFailSafe (std::string name, const AttributeValue &value);
  * match the input path and will then connect the input callback
  * to them.
  */
-void ConnectWithoutContext (std::string path, const CallbackBase &cb);
+void ConnectWithoutContext (const std::string& path, const CallbackBase &cb);
 /**
  * \param path a path to match trace sources.
  * \param cb the callback to disconnect to the matching trace sources.
  *
  * This function undoes the work of Config::Connect.
  */
-void DisconnectWithoutContext (std::string path, const CallbackBase &cb);
+void DisconnectWithoutContext (const std::string& path, const CallbackBase &cb);
 /**
  * \param path a path to match trace sources.
  * \param cb the callback to connect to the matching trace sources.
@@ -102,14 +102,14 @@ void DisconnectWithoutContext (std::string path, const CallbackBase &cb);
  * to them in such a way that the callback will receive an extra
  * context string upon trace event notification.
  */
-void Connect (std::string path, const CallbackBase &cb);
+void Connect (const std::string& path, const CallbackBase &cb);
 /**
  * \param path a path to match trace sources.
  * \param cb the callback to connect to the matching trace sources.
  *
  * This function undoes the work of Config::ConnectWithContext.
  */
-void Disconnect (std::string path, const CallbackBase &cb);
+void Disconnect (const std::string& path, const CallbackBase &cb);
 
 /**
  * \brief hold a set of objects which match a specific search string.
@@ -126,7 +126,7 @@ public:
   // constructor used only by implementation.
   MatchContainer (const std::vector<Ptr<Object> > &objects, 
                   const std::vector<std::string> &contexts, 
-                  std::string path);
+                  const std::string& path);
 
   /**
    * \returns an iterator which points to the first item in the container
@@ -152,11 +152,11 @@ public:
    *
    * The matching patch uniquely identifies the requested object.
    */
-  std::string GetMatchedPath (uint32_t i) const;
+  const std::string& GetMatchedPath (uint32_t i) const;
   /**
    * \returns the path used to perform the object matching.
    */
-  std::string GetPath (void) const;
+  const std::string& GetPath (void) const;
 
   /**
    * \param name name of attribute to set
@@ -166,7 +166,7 @@ public:
    * container.
    * \sa ns3::Config::Set
    */
-  void Set (std::string name, const AttributeValue &value);
+  void Set (const std::string& name, const AttributeValue &value);
   /**
    * \param name the name of the trace source to connect to
    * \param cb the sink to connect to the trace source
@@ -175,7 +175,7 @@ public:
    * container.
    * \sa ns3::Config::Connect
    */
-  void Connect (std::string name, const CallbackBase &cb);
+  void Connect (const std::string& name, const CallbackBase &cb);
   /**
    * \param name the name of the trace source to connect to
    * \param cb the sink to connect to the trace source
@@ -184,7 +184,7 @@ public:
    * container.
    * \sa ns3::Config::ConnectWithoutContext     
    */
-  void ConnectWithoutContext (std::string name, const CallbackBase &cb);
+  void ConnectWithoutContext (const std::string& name, const CallbackBase &cb);
   /**
    * \param name the name of the trace source to disconnect from
    * \param cb the sink to disconnect from the trace source
@@ -193,7 +193,7 @@ public:
    * container.
    * \sa ns3::Config::Disconnect
    */
-  void Disconnect (std::string name, const CallbackBase &cb);
+  void Disconnect (const std::string& name, const CallbackBase &cb);
   /**
    * \param name the name of the trace source to disconnect from
    * \param cb the sink to disconnect from the trace source
@@ -202,7 +202,7 @@ public:
    * container.
    * \sa ns3::Config::DisconnectWithoutContext
    */
-  void DisconnectWithoutContext (std::string name, const CallbackBase &cb);
+  void DisconnectWithoutContext (const std::string& name, const CallbackBase &cb);
 private:
   std::vector<Ptr<Object> > m_objects;
   std::vector<std::string> m_contexts;
@@ -214,7 +214,7 @@ private:
  * \returns a container which contains all the objects which match the input
  *          path.
  */
-MatchContainer LookupMatches (std::string path);
+MatchContainer LookupMatches (const std::string& path);
 
 /**
  * \param obj a new root object

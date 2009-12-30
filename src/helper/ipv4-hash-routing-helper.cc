@@ -29,13 +29,13 @@ namespace ns3 {
 
 Ipv4HashRoutingHelper::Ipv4HashRoutingHelper() : m_hashfunc(0)
 {
-  m_hashfunc = CreateObject<HashMD5> ();
+  m_hashfunc = CreateObject<HashHsieh> ();
 }
 
 Ipv4HashRoutingHelper::Ipv4HashRoutingHelper (const Ipv4HashRoutingHelper &o)
 {
   if (m_hashfunc == 0) {
-    m_hashfunc = CreateObject<HashMD5> ();
+    m_hashfunc = CreateObject<HashHsieh> ();
   };
 }
 

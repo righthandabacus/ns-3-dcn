@@ -99,7 +99,7 @@ public:
   virtual bool IsLinkUp () const;
   virtual void AddLinkChangeCallback (Callback<void> callback);
   virtual bool IsBroadcast () const;
-  virtual Address GetBroadcast () const;
+  virtual const Address& GetBroadcast () const;
   virtual bool IsMulticast () const;
   virtual Address GetMulticast (Ipv4Address multicastGroup) const;
   virtual bool IsPointToPoint () const;

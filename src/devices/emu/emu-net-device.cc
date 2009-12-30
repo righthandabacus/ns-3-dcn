@@ -1025,10 +1025,10 @@ EmuNetDevice::IsBroadcast (void) const
   return m_isBroadcast;
 }
 
-Address
+const Address&
 EmuNetDevice::GetBroadcast (void) const
 {
-  return Mac48Address ("ff:ff:ff:ff:ff:ff");
+  return Mac48Bcast;
 }
 
 bool 

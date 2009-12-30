@@ -11,7 +11,7 @@
 
 md5sum::md5sum()
 {
-	state = NULL;
+	state = new md5_state_t;
 	reset();
 };
 
@@ -22,8 +22,6 @@ md5sum::~md5sum()
 
 void md5sum::reset()
 {
-	if (state) { delete state; };
-	state = new md5_state_t;
 	md5_init(state);
 };
 

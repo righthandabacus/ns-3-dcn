@@ -52,15 +52,15 @@ public:
 	Ipv4InterfaceContainer& EdgeInterfaces(void) { return m_edgeIface; };
 	Ipv4InterfaceContainer& HostInterfaces(void) { return m_hostIface; };
 	static void EnableAscii (std::ostream &os, uint32_t nodeid, uint32_t deviceid);
-	static void EnableAscii (std::ostream &os, NetDeviceContainer d);
-	static void EnableAscii (std::ostream &os, NodeContainer n);
-	static void EnableAsciiAll (std::ostream &os);
+	static void EnableAscii (std::ostream &os, NetDeviceContainer& d);
+	static void EnableAscii (std::ostream &os, NodeContainer& n);
+	void EnableAsciiAll (std::ostream &os);
 private:
 	// Aux functions
 	void	AssignIP (Ptr<NetDevice> c, uint32_t address, Ipv4InterfaceContainer &con);
 	NetDeviceContainer	InstallCpCp (Ptr<Node> a, Ptr<Node> b);
 	NetDeviceContainer	InstallCpRp (Ptr<Node> a, Ptr<Node> b);
-	void EnableAscii (Ptr<Node> node, Ptr<NetDevice> device);
+	static void EnableAscii (Ptr<Node> node, Ptr<NetDevice> device);
 	static void AsciiRxEvent (Ptr<AsciiWriter> writer, std::string path, Ptr<const Packet> packet);
 	static void AsciiEnqueueEvent (Ptr<AsciiWriter> writer, std::string path, Ptr<const Packet> packet);
 	static void AsciiDequeueEvent (Ptr<AsciiWriter> writer, std::string path, Ptr<const Packet> packet);

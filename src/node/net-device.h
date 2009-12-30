@@ -27,6 +27,7 @@
 #include "ns3/object.h"
 #include "ns3/ptr.h"
 #include "address.h"
+#include "mac48-address.h"
 #include "ipv4-address.h"
 #include "ipv6-address.h"
 
@@ -147,7 +148,7 @@ public:
    * Calling this method is invalid if IsBroadcast returns
    * not true.
    */
-  virtual Address GetBroadcast (void) const = 0;
+  virtual const Address& GetBroadcast (void) const = 0;
 
   /**
    * \return value of m_isMulticast flag
@@ -332,6 +333,7 @@ public:
    */
   virtual bool SupportsSendFrom (void) const = 0;
 
+  static const Address Mac48Bcast;
 };
 
 } // namespace ns3

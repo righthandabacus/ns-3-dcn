@@ -287,6 +287,13 @@ PointToPointNetDevice::Attach (Ptr<PointToPointChannel> ch)
   m_channel = ch;
 
   m_channel->Attach(this);
+  if (m_channel->GetNDevices () == 2) {
+    for (uint32_t i = 0; i < m_channel->GetNDevices (); ++i)
+      {
+        Ptr<PointToPointNetDevice> tmp = m_channel->GetDevice (i)->GetObject<PointToPointNetDevice>();
+	tmp->CacheRemote();
+      };
+  };
 
   //
   // This device is up whenever it is attached to a channel.  A better plan
@@ -295,6 +302,12 @@ PointToPointNetDevice::Attach (Ptr<PointToPointChannel> ch)
   //
   NotifyLinkUp ();
   return true;
+}
+
+void
+PointToPointNetDevice::CacheRemote()
+{
+  m_remoteAddr = GetRemote();
 }
 
   void
@@ -347,11 +360,11 @@ PointToPointNetDevice::Receive (Ptr<Packet> packet)
       if (!m_promiscCallback.IsNull ())
         {
           m_macPromiscRxTrace (packet);
-          m_promiscCallback (this, packet, protocol, GetRemote (), GetAddress (), NetDevice::PACKET_HOST);
+          m_promiscCallback (this, packet, protocol, m_remoteAddr, GetAddress (), NetDevice::PACKET_HOST);
         }
 
       m_macRxTrace (packet);
-      m_rxCallback (this, packet, protocol, GetRemote ());
+      m_rxCallback (this, packet, protocol, m_remoteAddr);
     }
 }
 
@@ -432,10 +445,10 @@ PointToPointNetDevice::IsBroadcast (void) const
 // point-to-point device.  The base class NetDevice wants us to return a
 // broadcast address, so we make up something reasonable.
 //
-  Address
+const Address&
 PointToPointNetDevice::GetBroadcast (void) const
 {
-  return Mac48Address ("ff:ff:ff:ff:ff:ff");
+  return Mac48Bcast;
 }
 
 //
@@ -578,7 +591,7 @@ PointToPointNetDevice::GetRemote (void) const
       Ptr<NetDevice> tmp = m_channel->GetDevice (i);
       if (tmp != this)
         {
-          return tmp->GetAddress ();
+          return tmp->GetAddress();
         }
     }
   NS_ASSERT (false);

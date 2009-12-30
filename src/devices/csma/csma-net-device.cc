@@ -944,11 +944,11 @@ CsmaNetDevice::IsBroadcast (void) const
   return true;
 }
 
-  Address
+const Address &
 CsmaNetDevice::GetBroadcast (void) const
 {
   NS_LOG_FUNCTION_NOARGS ();
-  return Mac48Address ("ff:ff:ff:ff:ff:ff");
+  return Mac48Bcast;
 }
 
   bool 

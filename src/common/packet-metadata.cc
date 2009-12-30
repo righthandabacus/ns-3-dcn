@@ -134,9 +134,8 @@ uint32_t
 PacketMetadata::ReadUleb128 (const uint8_t **pBuffer) const
 {
   const uint8_t *buffer = *pBuffer;
-  uint32_t result = 0;
+  uint32_t result;
   uint8_t byte;
-  result = 0;
   byte = buffer[0];
   result = (byte & (~0x80));
   if (!(byte & 0x80))
@@ -485,15 +484,12 @@ PacketMetadata::ReadItems (uint16_t current,
 {
   NS_LOG_FUNCTION (this << current);
   const uint8_t *buffer = &m_data->m_data[current];
-  item->next = buffer[0];
-  item->next |= (buffer[1]) << 8;
-  item->prev = buffer[2];
-  item->prev |= (buffer[3]) << 8;
+  item->next = buffer[0] | (buffer[1] << 8);
+  item->prev = buffer[2] | (buffer[3] << 8);
   buffer += 4;
   item->typeUid = ReadUleb128 (&buffer);
   item->size = ReadUleb128 (&buffer);
-  item->chunkUid = buffer[0];
-  item->chunkUid |= (buffer[1]) << 8;
+  item->chunkUid = buffer[0] | (buffer[1] << 8);
   buffer += 2;
 
   bool isExtra = (item->typeUid & 0x1) == 0x1;
@@ -501,10 +497,7 @@ PacketMetadata::ReadItems (uint16_t current,
     {
       extraItem->fragmentStart = ReadUleb128 (&buffer);
       extraItem->fragmentEnd = ReadUleb128 (&buffer);
-      extraItem->packetUid = buffer[0];
-      extraItem->packetUid |= buffer[1] << 8;
-      extraItem->packetUid |= buffer[2] << 16;
-      extraItem->packetUid |= buffer[3] << 24;
+      extraItem->packetUid = buffer[0] | (buffer[1] << 8) | (buffer[2] << 16) | (buffer[3] << 24);
       buffer += 4;
     }
   else
@@ -1001,19 +994,12 @@ PacketMetadata::ItemIterator::Next (void)
       m_hasReadTail = true;
     }
   m_current = smallItem.next;
-  uint32_t uid = (smallItem.typeUid & 0xfffffffe) >> 1;
+  uint32_t uid = smallItem.typeUid >> 1;
   item.tid.SetUid (uid);
   item.currentTrimedFromStart = extraItem.fragmentStart;
   item.currentTrimedFromEnd = extraItem.fragmentEnd - smallItem.size;
   item.currentSize = extraItem.fragmentEnd - extraItem.fragmentStart;
-  if (extraItem.fragmentStart != 0 || extraItem.fragmentEnd != smallItem.size)
-    {
-      item.isFragment = true;
-    }
-  else
-    {
-      item.isFragment = false;
-    }
+  item.isFragment = (extraItem.fragmentStart != 0 || extraItem.fragmentEnd != smallItem.size);
   TypeId tid;
   tid.SetUid (uid);
   if (uid == 0)

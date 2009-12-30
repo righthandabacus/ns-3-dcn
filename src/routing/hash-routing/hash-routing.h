@@ -193,6 +193,8 @@ protected:
 	DestRouteTable m_destRouteTable;
 	FlowRouteTable m_flowRouteTable;
 	CongRecordTable m_congRecord;
+
+	std::set<uint32_t> localAddrCache;
   
 	Ptr<Ipv4> m_ipv4;	// Hook to the Ipv4 object of this node
 	bool m_intelRR;		// Intelligent reroute

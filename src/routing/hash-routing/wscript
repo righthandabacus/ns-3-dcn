@@ -7,6 +7,7 @@ def build(bld):
 	'hash-function-impl.cc',
 	'hash-routing.cc',
 	'md5.c',
+	'hsieh.c',
 	'md5sum.cc',
         ]
     headers = bld.new_task_gen('ns3header')
@@ -17,6 +18,7 @@ def build(bld):
 	'hash-function-impl.h',
 	'hash-routing.h',
 	'md5.h',
+	'hsieh.h',
 	'md5sum.h',
         ]
 

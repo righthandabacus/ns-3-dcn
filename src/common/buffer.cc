@@ -990,15 +990,40 @@ Buffer::Iterator::ReadU64 (void)
 uint16_t 
 Buffer::Iterator::ReadNtohU16 (void)
 {
+#if 0
   uint16_t retval = 0;
   retval |= ReadU8 ();
   retval <<= 8;
   retval |= ReadU8 ();
   return retval;
+#endif
+  NS_ASSERT (m_current >= m_dataStart &&
+             m_current <= m_dataEnd);
+
+  if (m_current + 1 < m_zeroStart)
+    {
+      uint16_t data = m_data[m_current++] << 8;
+      data |= m_data[m_current++];
+      return data;
+    }
+  else if (m_current + 1 < m_zeroEnd)
+    {
+      m_current += 2;
+      return 0;
+    }
+  else
+    {
+      uint32_t i = m_current - (m_zeroEnd - m_zeroStart);
+      uint32_t data = m_data[i++] << 8;
+      data |= m_data[i++];
+      m_current += 2;
+      return data;
+    }
 }
 uint32_t 
 Buffer::Iterator::ReadNtohU32 (void)
 {
+#if 0
   uint32_t retval = 0;
   retval |= ReadU8 ();
   retval <<= 8;
@@ -1008,6 +1033,33 @@ Buffer::Iterator::ReadNtohU32 (void)
   retval <<= 8;
   retval |= ReadU8 ();
   return retval;
+#endif
+  NS_ASSERT (m_current >= m_dataStart &&
+             m_current <= m_dataEnd);
+
+  if (m_current + 3 < m_zeroStart)
+    {
+      uint32_t data = m_data[m_current++] << 24;
+      data |= m_data[m_current++] << 16;
+      data |= m_data[m_current++] << 8;
+      data |= m_data[m_current++];
+      return data;
+    }
+  else if (m_current + 3< m_zeroEnd)
+    {
+      m_current += 4;
+      return 0;
+    }
+  else
+    {
+      uint32_t i = m_current - (m_zeroEnd - m_zeroStart);
+      uint32_t data = m_data[i++] << 24;
+      data |= m_data[i++] << 16;
+      data |= m_data[i++] << 8;
+      data |= m_data[i++];
+      m_current += 4;
+      return data;
+    }
 }
 uint64_t 
 Buffer::Iterator::ReadNtohU64 (void)

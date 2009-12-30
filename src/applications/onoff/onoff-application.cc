@@ -97,6 +97,7 @@ OnOffApplication::OnOffApplication ()
   m_residualBits = 0;
   m_lastStartTime = Seconds (0);
   m_totBytes = 0;
+  m_pendingBytes = 0;
 }
 
 OnOffApplication::~OnOffApplication()
@@ -133,6 +134,7 @@ void OnOffApplication::StartApplication() // Called at time specified by Start
       m_socket = Socket::CreateSocket (GetNode(), m_tid);
       m_socket->Bind ();
       m_socket->Connect (m_peer);
+      m_socket->SetSendCallback(MakeCallback(&OnOffApplication::ResumeSend,this));
     }
   // Insure no pending event
   CancelEvents ();
@@ -235,12 +237,40 @@ void OnOffApplication::SendPacket()
   NS_LOG_LOGIC ("sending packet at " << Simulator::Now());
   NS_ASSERT (m_sendEvent.IsExpired ());
   Ptr<Packet> packet = Create<Packet> (m_pktSize);
-  m_txTrace (packet);
-  m_socket->Send (packet);
-  m_totBytes += m_pktSize;
-  m_lastStartTime = Simulator::Now();
+  if ( m_socket->Send (packet) > 0) {
+	m_txTrace (packet);
+	m_totBytes += m_pktSize;
+  } else {
+	m_pendingBytes += m_pktSize;
+  };
   m_residualBits = 0;
+  m_lastStartTime = Simulator::Now();
   ScheduleNextTx();
+}
+
+void OnOffApplication::ResumeSend(Ptr<Socket> sock, uint32_t txAvail)
+{
+	NS_LOG_FUNCTION(this << sock << txAvail);
+	if (m_pendingBytes == 0 || txAvail < m_pktSize + 50) return;
+
+	// ScheduleNow to prevent a huge calling stack build up
+	Simulator::ScheduleNow(&OnOffApplication::SendPendingPacket, this, txAvail);
+}
+
+void OnOffApplication::SendPendingPacket(uint32_t txAvail)
+{
+	NS_LOG_FUNCTION_NOARGS ();
+	while (m_pendingBytes > 0 && txAvail >= m_pktSize + 50) {
+		uint32_t size = std::min(m_pendingBytes, m_pktSize);
+		Ptr<Packet> packet = Create<Packet> (size);
+		if (m_socket->Send (packet) <= 0) {
+			return;
+		};
+		m_txTrace (packet);
+		m_totBytes += size;
+		m_pendingBytes -= size;
+		txAvail -= size;
+	};
 }
 
 void OnOffApplication::ConnectionSucceeded(Ptr<Socket>)

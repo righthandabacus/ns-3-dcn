@@ -7,6 +7,7 @@ import types
 import optparse
 import os.path
 import re
+import string
 
 # WAF modules
 import pproc as subprocess
@@ -35,6 +36,7 @@ cflags.profiles = {
 	'debug':     [0, 2, 3],
 	'optimized': [3, 2, 1],
 	'release':   [3, 2, 0],
+	'profile':   [3, 2, 3],
 	}
 cflags.default_profile = 'debug'
 
@@ -165,6 +167,10 @@ def set_options(opt):
     opt.add_option('--enable-sudo',
                    help=('Use sudo to setup suid bits on ns3 executables.'),
                    dest='enable_sudo', action='store_true',
+                   default=False)
+    opt.add_option('--enable-thread',
+                   help=('Allow threading support.'),
+                   dest='enable_thread', action='store_true',
                    default=False)
     opt.add_option('--enable-examples',
                    help=('Build the ns-3 examples and samples.'),
@@ -394,7 +400,8 @@ def configure(conf):
                               ['LINKFLAGS', 'LINKFLAGS_EXTRA'],
                               ['LINKFLAGS', 'LDFLAGS_EXTRA']]:
         if envvar in os.environ:
-            conf.env.append_value(confvar, os.environ[envvar])
+            conf.env.append_value(confvar, string.split(os.environ[envvar]))
+            print env['CXXFLAGS']
 
     # Write a summary of optional features status
     print "---- Summary of optional NS-3 features:"

@@ -21,6 +21,7 @@
 #include "data-rate.h"
 #include "ns3/nstime.h"
 #include "ns3/fatal-error.h"
+#include <stdlib.h>
 
 
 static bool
@@ -29,10 +30,7 @@ DoParse (const std::string s, uint64_t *v)
   std::string::size_type n = s.find_first_not_of("0123456789.");
   if (n != std::string::npos)
   { // Found non-numeric
-    std::istringstream iss;
-    iss.str (s.substr(0, n));
-    double r;
-    iss >> r;
+    double r = atof(s.substr(0,n).c_str());
     std::string trailer = s.substr(n, std::string::npos);
     if (trailer == "bps")
       {
@@ -170,9 +168,7 @@ DoParse (const std::string s, uint64_t *v)
       }
     return true;
   }
-  std::istringstream iss;
-  iss.str (s);
-  iss >> *v;
+  *v = atof(s.c_str());
   return true;
 }
 

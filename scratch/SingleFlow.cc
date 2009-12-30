@@ -194,7 +194,7 @@ int main (int argc, char *argv[])
 //	PointToPointHelper::EnableAsciiAll (ascii);
 	std::cout << std::setprecision(9) << std::fixed;
 	std::clog << std::setprecision(9) << std::fixed;
-	FatTreeHelper::EnableAsciiAll (std::cout);
+	fattree->EnableAsciiAll (std::cout);
 //	LogComponentEnableAll(LOG_LEVEL_ALL);
 	LogComponentEnable("OnOffApplication", LOG_LEVEL_ALL);
 	LogComponentEnable("Simulator", LOG_LEVEL_ALL);

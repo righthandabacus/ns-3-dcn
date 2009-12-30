@@ -329,11 +329,11 @@ BridgeNetDevice::IsBroadcast (void) const
 }
 
 
-Address
+const Address &
 BridgeNetDevice::GetBroadcast (void) const
 {
   NS_LOG_FUNCTION_NOARGS ();
-  return Mac48Address ("ff:ff:ff:ff:ff:ff");
+  return Mac48Bcast;
 }
 
 bool

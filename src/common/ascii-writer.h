@@ -41,7 +41,7 @@ public:
   static Ptr<AsciiWriter> Get (std::ostream &os);
 
   enum Type {
-    ENQUEUE,
+    ENQUEUE = 0,
     DEQUEUE,
     DROP,
     TX,
