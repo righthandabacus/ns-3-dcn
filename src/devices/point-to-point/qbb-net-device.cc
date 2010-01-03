@@ -27,6 +27,7 @@
 #include "ns3/object-vector.h"
 #include "ns3/pause-header.h"
 #include "ns3/infinite-queue.h"
+#include "ns3/drop-tail-queue.h"
 #include "ns3/assert.h"
 #include "ns3/ipv4.h"
 #include "ns3/simulator.h"
@@ -82,6 +83,7 @@ QbbNetDevice::QbbNetDevice () : m_bufferUsage(0)
 	// Set all the queues used are infinite queues
 	for (unsigned i=0; i<qCnt; i++) {
 		m_queue.push_back( CreateObject<InfiniteQueue>() );
+//		m_queue.push_back( CreateObject<DropTailQueue>() );
 	};
 }
 

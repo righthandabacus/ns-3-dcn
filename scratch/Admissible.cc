@@ -83,6 +83,7 @@ int main (int argc, char *argv[])
 	Config::SetDefault ("ns3::RpNetDevice::MinRate", DataRateValue(DataRate("1Mbps")));
 	Config::SetDefault ("ns3::CpNetDevice::SpeedUp", UintegerValue(speedup));
 	Config::SetDefault ("ns3::HashRouting::IntelReroute", BooleanValue(false));
+//	Config::SetDefault ("ns3::HashRouting::RerouteThreshold", UintergerValue(2));
 	Config::SetDefault ("ns3::HashRouting::EnableReroute", BooleanValue(rr != 0));
 
 	// Build the fat tree network
