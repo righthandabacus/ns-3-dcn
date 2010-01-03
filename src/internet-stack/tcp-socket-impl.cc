@@ -21,6 +21,9 @@
  *         Adrian Sai-wah Tam <adrian.sw.tam@gmail.com>
  */
 
+#define NS_LOG_APPEND_CONTEXT                                   \
+	if (m_node) { std::clog << Simulator::Now ().GetSeconds () << " [node " << m_node->GetId () << "] "; } 
+
 #include "ns3/abort.h"
 #include "ns3/node.h"
 #include "ns3/inet-socket-address.h"
