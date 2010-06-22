@@ -37,6 +37,7 @@ public:
 	flowid(Ptr<Packet> p);	// Set the flow Id from a packet
 	flowid(char* id);	// Set the flow Id using a 16-byte char*
 	flowid(const Ipv4Header& iph);	// Set partial flow Id using Ipv4Header
+	flowid(uint32_t _saddr, uint32_t _daddr, uint8_t _proto, uint16_t _sport, uint16_t _dport);
 	void SetSAddr(uint32_t saddr);
 	void SetDAddr(uint32_t daddr);
 	void SetSPort(uint16_t sport);

@@ -66,13 +66,19 @@ public:
    *
    * @return buffer available in bytes
    */
-  virtual uint32_t GetTxAvailable(void) const;
+  virtual uint32_t GetTxAvailable(const flowid& f) const;
+  virtual uint32_t GetTxAvailable(unsigned) const;
 
   /**
    * TracedCallback hooks
    */
   void ConnectWithoutContext(const CallbackBase& callback);
   void DisconnectWithoutContext(const CallbackBase& callback);
+
+  virtual int32_t PrintStatus(std::ostream& os);
+
+  /// Given a flow id, produce a hash value so that a flow can be classified into a priority
+  static uint64_t Hash(const flowid& f);
 
 protected:
   virtual void DoDispose(void);
@@ -99,9 +105,6 @@ protected:
   /// Tell if an address is local to this node
   bool IsLocal(const Ipv4Address& addr) const;
 
-  /// Given a flow id, produce a hash value so that a flow can be classified into a priority
-  static uint64_t Hash(const flowid& f);
-
   /**
    * The queues for each priority class.
    * @see class Queue
@@ -120,6 +123,11 @@ protected:
   unsigned m_lastQ;	//< Last accessed queue
   EventId m_resumeEvt[qCnt];  //< Keeping the next resume event
   EventId m_recheckEvt[qCnt]; //< Keeping the next recheck queue full event
+#if 1
+  std::list<uint32_t> m_arrival[qCnt];
+#else
+  std::vector<double> m_arrival[qCnt];
+#endif
 
 };
 

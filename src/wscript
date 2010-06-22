@@ -31,6 +31,7 @@ all_modules = (
     'routing/nix-vector-routing',
     'routing/olsr',
     'routing/hash-routing',
+    'routing/spain-routing',
     'routing/global-routing',
     'routing/static-routing',
     'routing/list-routing',

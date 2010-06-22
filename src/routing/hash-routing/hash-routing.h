@@ -59,23 +59,32 @@ typedef std::list<Ptr<DestRoute> > DestRouteTable;
 class FlowRoute : public RefCountBase
 {
 public:
-	FlowRoute(const flowid& f, const Time& t, uint32_t i) : fid(f), last(t), outPort(i) {};
+	FlowRoute(const flowid& f, const Time& t, uint32_t i) : fid(f), last(t), lastreroute(Simulator::Now()), outPort(i) {};
 	flowid fid;
 	Time last;
+	Time lastreroute;
 	uint32_t outPort;
 };
 
 typedef std::list<Ptr<FlowRoute> > FlowRouteTable;
 
-// Congestion signal record
+// Record for a CN packet
+class CnRec : public RefCountBase
+{
+public:
+	CnRec(uint32_t cp_) : cp(cp_), time(Simulator::Now()) {};
+	uint32_t cp;	// Congestion point address
+	Time time;	// Time of receipt
+};
+
+// Congestion signal record for a flow
 class CongRecord : public RefCountBase
 {
 public:
-	CongRecord(const flowid& f, const Time& t, uint32_t c) : fid(f), last(t), count(c) {};
-	flowid fid;
-	Time last;
-	uint32_t count;
-	std::set<uint32_t> congPoints;
+	CongRecord(const flowid& f) : fid(f), zero(0) {};
+	flowid fid;	// Flow ID
+	uint32_t zero;	// The "zero" position in computing reroute threshold
+	std::list<Ptr<CnRec> > cn;	// List of all CNs
 };
 
 typedef std::list<Ptr<CongRecord> > CongRecordTable;
@@ -90,7 +99,7 @@ public:
 
 	// Functions defined in Ipv4RoutingProtocol
 	virtual Ptr<Ipv4Route> RouteOutput (Ptr<Packet> p,
-			const Ipv4Header &header,
+			Ipv4Header &header,
 			Ptr<NetDevice> oif, Socket::SocketErrno &sockerr);
 	virtual bool RouteInput  (Ptr<const Packet> p,
 			const Ipv4Header &header, Ptr<const NetDevice> idev,
@@ -179,9 +188,9 @@ protected:
 	 */
 	uint32_t Reroute(const flowid& fid, uint32_t oldPort);
 
-	/* Rerouting using the congestion information assisted algorithm
+	/* The function doing the real reroute logic to pick a new output port
 	 */
-	uint32_t IntelRoute(const flowid& fid);
+	uint32_t DoReroute(const flowid& fid, uint32_t oldPort);
 
 	/*
 	 * Clean up everything to make this object virtually dead
@@ -197,10 +206,10 @@ protected:
 	std::set<uint32_t> localAddrCache;
   
 	Ptr<Ipv4> m_ipv4;	// Hook to the Ipv4 object of this node
-	bool m_intelRR;		// Intelligent reroute
-	bool m_enableRR;	// Enable reroute
+	uint32_t m_RR;		// Reroute scheme to use
 	uint32_t m_rrThresh;	// CN threshold for reroute
 	Time m_lifetime;	// Lifetime of a CN record
+	Time m_freeze;		// Freeze time of a flow to prevent frequent rerouting
 };
 
 } // Namespace ns3

@@ -600,7 +600,7 @@ TcpSocketImpl::DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail)
 {
 	NS_LOG_FUNCTION (this << nd << avail);
 	Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
-	if (qbb->GetTxAvailable() >= m_segmentSize) {
+	if (qbb->GetTxAvailable(m_flowid) >= m_segmentSize) {
 		Simulator::ScheduleNow(&TcpSocketImpl::CancelNetDeviceCallback, this, qbb);
 		SendPendingData(m_connected);
 	};
@@ -652,7 +652,12 @@ TcpSocketImpl::SendPendingData (bool withAck)
 			// From the route, get the netdevice
 			Ptr<NetDevice> nd = route->GetOutputDevice();
 			Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
-			if (qbb != 0 && qbb->GetTxAvailable() < m_segmentSize) {
+			if (m_flowid.GetSAddr() == 0) {
+				m_flowid = flowid(m_endPoint->GetLocalAddress().Get(), m_remoteAddress.Get(),
+						TcpL4Protocol::PROT_NUMBER,
+						m_endPoint->GetLocalPort(), m_remotePort);
+			};
+			if (qbb != 0 && qbb->GetTxAvailable(m_flowid) < m_segmentSize) {
 				NS_LOG_LOGIC("NetDevice buffer full. Not sending.");
 				qbb->ConnectWithoutContext(MakeCallback(&TcpSocketImpl::DeviceUnblocked, this));
 				break;
@@ -984,6 +989,8 @@ bool TcpSocketImpl::ProcessPacketAction (Actions_t a, Ptr<Packet> p,
 			// This is also a new ACK indeed, process it
 			NewAck (tcpHeader.GetAckNumber(), true);
 			NotifyNewConnectionCreated (this, fromAddress);
+			// Always respond to first data packet to speed up the connection
+			m_delAckCount = m_delAckMaxCount;
 			break;
 		default: // Let another ProcessAction() to handle all other actions
 			return ProcessAction (a);

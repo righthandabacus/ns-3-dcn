@@ -33,6 +33,7 @@
 #include "ns3/simulator.h"
 #include "ns3/point-to-point-channel.h"
 #include "ns3/random-variable.h"
+#include "ns3/flow-id-tag.h"
 
 NS_LOG_COMPONENT_DEFINE ("QbbNetDevice");
 
@@ -53,7 +54,7 @@ QbbNetDevice::GetTypeId (void)
 			MakeBooleanChecker ())
 	 .AddAttribute ("QbbThreshold",
 			"Threshold of number of packets in queue to send PAUSE.",
-			UintegerValue (900),
+			UintegerValue (100),
 			MakeUintegerAccessor (&QbbNetDevice::m_threshold),
 			MakeUintegerChecker<uint32_t> ())
 	 .AddAttribute ("PauseTime",
@@ -76,7 +77,7 @@ QbbNetDevice::GetTypeId (void)
 }
 
 
-QbbNetDevice::QbbNetDevice () : m_bufferUsage(0)
+QbbNetDevice::QbbNetDevice () : m_bufferUsage(0), m_lastQ(qCnt-1)
 {
 	NS_LOG_FUNCTION (this);
 
@@ -84,6 +85,7 @@ QbbNetDevice::QbbNetDevice () : m_bufferUsage(0)
 	for (unsigned i=0; i<qCnt; i++) {
 		m_queue.push_back( CreateObject<InfiniteQueue>() );
 //		m_queue.push_back( CreateObject<DropTailQueue>() );
+		m_paused[i] = false;
 	};
 }
 
@@ -128,24 +130,33 @@ QbbNetDevice::DequeueAndTransmit (void)
 	// Quit if channel busy
 	if (m_txMachineState == BUSY) return;
 
+	bool empty = true;
+
 	// Look for a packet in a round robin
 	unsigned qIndex = m_lastQ;
 	for (unsigned i=0; i<qCnt; i++) {
 		if (++qIndex >= qCnt) qIndex = 0;
+		if (m_queue[qIndex]->GetNPackets()) empty = false;
 		if (m_paused[qIndex] && m_qbbEnabled) continue;
 		Ptr<Packet> p = m_queue[qIndex]->Dequeue();
 		if (p != 0) {
+			NS_LOG_INFO("Dequeue from queue " << qIndex << ", now has len=" << m_queue[qIndex]->GetNPackets());
 			m_snifferTrace (p);
 			m_promiscSnifferTrace (p);
 			TransmitStart(p);
 			m_lastQ = qIndex;
 			m_bufferUsage -= p->GetSize();
-			uint32_t avail = GetTxAvailable();
+			uint32_t avail = GetTxAvailable(qIndex);
+			NS_LOG_INFO("Current TxAvailable=" << avail);
 			if (avail) m_sendCb(this, avail);
 			return;
 		};
 	};
 	// No queue can deliver any packet, so we just exit
+	if (! empty) {
+		NS_LOG_INFO("PAUSE prohibits send at node " << m_node->GetId());
+		//PrintStatus(std::clog);
+	};
 	return;
 }
 
@@ -155,7 +166,7 @@ QbbNetDevice::Resume (unsigned qIndex)
 	NS_LOG_FUNCTION(this << qIndex);
 	NS_ASSERT_MSG(m_paused[qIndex], "Must be PAUSEd");
 	m_paused[qIndex] = false;
-	NS_LOG_LOGIC("Node "<< m_node->GetId() <<" dev "<< m_ifIndex <<" queue "<< qIndex <<
+	NS_LOG_INFO("Node "<< m_node->GetId() <<" dev "<< m_ifIndex <<" queue "<< qIndex <<
 			" resumed at "<< Simulator::Now().GetSeconds());
 	DequeueAndTransmit();
 }
@@ -181,6 +192,7 @@ QbbNetDevice::Receive (Ptr<Packet> packet)
 
 	// If this is a Pause, stop the corresponding queue
 	if (ipv4h.GetProtocol() != 0xFE) {
+		packet->AddPacketTag(FlowIdTag(m_ifIndex));
 		PointToPointNetDevice::Receive(packet);
 	} else {
 		// Hit trace hooks
@@ -220,7 +232,7 @@ QbbNetDevice::Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNum
 	packet->PeekHeader(h);
 	if (h.GetProtocol() == 0xFE) {
 		if (!m_qbbEnabled) return true;
-		NS_LOG_INFO("Deliver PAUSE");
+		NS_LOG_INFO("Node "<< m_node->GetId() <<" dev "<< m_ifIndex <<" deliver PAUSE");
 		AddHeader(packet, protocolNumber);
 		m_snifferTrace (packet);
 		m_promiscSnifferTrace (packet);
@@ -236,12 +248,47 @@ QbbNetDevice::Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNum
 	// Get the flow id of the packet
 	flowid f = flowid(packet);
 	unsigned qIndex = Hash(flowid(packet)) % qCnt;
+	
+	// Gather statistics on the input port number
+	FlowIdTag t;
+	packet->RemovePacketTag(t);
+	uint32_t inDev = t.GetFlowId();
+	if (inDev > 0 && inDev < 1000 && /* prevent bug after optimization */
+			inDev < m_node->GetObject<Ipv4>()->GetNInterfaces()) {
+		if ( true || m_recheckEvt[qIndex].IsExpired()) {
+#if 0
+			for (unsigned i = 0; i < m_arrival[qIndex].size(); ++i) {
+				m_arrival[qIndex][i] *= 0.75;
+			};
+			while (m_arrival[qIndex].size() <= inDev) {
+				m_arrival[qIndex].push_back(0);
+			};
+			m_arrival[qIndex][inDev] += 1;
+#endif
+			for (std::list<uint32_t>::iterator i = m_arrival[qIndex].begin(); i != m_arrival[qIndex].end(); ++i) {
+				if (*i == inDev) {
+					m_arrival[qIndex].erase(i);
+					break;
+				};
+			};
+			m_arrival[qIndex].push_front(inDev);
+		} else {
+			std::list<uint32_t>::iterator i = m_arrival[qIndex].begin();
+			for (; i != m_arrival[qIndex].end(); ++i) {
+				if (*i == inDev) break;
+			};
+			if (i == m_arrival[qIndex].end()) {
+				m_arrival[qIndex].push_back(inDev);
+			};
+		};
+	};
 
 	// Enqueue, call DequeueAndTransmit(), and check for queue overflow
 	AddHeader(packet, protocolNumber);
 	m_macTxTrace (packet);
 	m_queue[qIndex]->Enqueue(packet);
 	m_bufferUsage += packet->GetSize();
+	NS_LOG_INFO("Queue "<< qIndex <<" length " << m_queue[qIndex]->GetNPackets());
 	DequeueAndTransmit();
 	if (m_qbbEnabled && IsLocal(h.GetSource())==false) {
 		CheckQueueFull(qIndex);
@@ -253,10 +300,10 @@ void
 QbbNetDevice::CheckQueueFull(unsigned qIndex)
 {
 	NS_LOG_FUNCTION(this);
+	NS_LOG_INFO("Queue "<< qIndex <<" length " << m_queue[qIndex]->GetNPackets());
   
 	if (m_queue[qIndex]->GetNPackets() > m_threshold) {
 		// Create the PAUSE packet
-		NS_LOG_INFO("Generate PAUSE");
 		Ptr<Packet> p = Create<Packet>(0);
 		PauseHeader pauseh(m_pausetime /* in usec */, m_queue[qIndex]->GetNPackets(), qIndex);
 		p->AddHeader(pauseh);
@@ -269,7 +316,21 @@ QbbNetDevice::CheckQueueFull(unsigned qIndex)
 		ipv4h.SetIdentification(UniformVariable(0,65536).GetValue());
 		p->AddHeader(ipv4h);
 		// Loop through every net device and send
+		NS_LOG_INFO("Node "<< m_node->GetId() <<" device "<< m_ifIndex <<" queue "<< qIndex <<
+				" send PAUSE at "<< Simulator::Now().GetSeconds());
 		Ptr<Ipv4> m_ipv4 = m_node->GetObject<Ipv4>();
+#if 1
+		std::list<uint32_t>::iterator i = m_arrival[qIndex].begin();
+		for(uint32_t j = m_queue[qIndex]->GetNPackets(); j > m_threshold; j-=2) {
+			Ptr<NetDevice> device = m_ipv4->GetNetDevice(*i);
+			Ptr<Packet> pCopy = p->Copy();
+			device->Send(pCopy, Mac48Bcast, 0x0800);
+			if (++i == m_arrival[qIndex].end()) {
+				break;
+			};
+		};
+#endif
+#if 0
 		for(uint32_t i=m_node->GetNDevices()-1; i>0; i--) {
 			Ptr<NetDevice> device = m_ipv4->GetNetDevice(i);
 			if (device == this) {
@@ -278,8 +339,33 @@ QbbNetDevice::CheckQueueFull(unsigned qIndex)
 			Ptr<Packet> pCopy = p->Copy();
 			device->Send(pCopy, Mac48Bcast, 0x0800);
 		};
-		NS_LOG_LOGIC("Node "<< m_node->GetId() <<" device "<< m_ifIndex <<" queue "<< qIndex <<
-				" send PAUSE at "<< Simulator::Now().GetSeconds());
+#endif
+#if 0
+		std::list<uint32_t> sortedDev;
+		std::list<uint32_t>::iterator j;
+		for (unsigned i = 0; i < m_arrival[qIndex].size(); ++i) {
+			j = sortedDev.begin();
+			while(j != sortedDev.end()) {
+				if (m_arrival[qIndex][*j] > m_arrival[qIndex][i]) {
+					break;
+				} else {
+					++j;
+				};
+			};
+			sortedDev.insert(j, i);
+		};
+		j = sortedDev.begin();
+		for(uint32_t k = m_queue[qIndex]->GetNPackets(); k > m_threshold; k-=2) {
+			if (j == sortedDev.end()) {
+				break;
+			};
+			Ptr<NetDevice> device = m_ipv4->GetNetDevice(*j);
+			Ptr<Packet> pCopy = p->Copy();
+			device->Send(pCopy, Mac48Bcast, 0x0800);
+			++j;
+		};
+#endif
+
 		Simulator::Cancel(m_recheckEvt[qIndex]);
 		m_recheckEvt[qIndex] = Simulator::Schedule(MicroSeconds(m_pausetime/2),
 				&QbbNetDevice::CheckQueueFull, this, qIndex);
@@ -320,9 +406,17 @@ QbbNetDevice::Hash(const flowid& f)
 };
 
 uint32_t
-QbbNetDevice::GetTxAvailable(void) const
+QbbNetDevice::GetTxAvailable(unsigned qIndex) const
 {
-	return (m_bufferUsage > m_buffersize) ? 0 : (m_buffersize - m_bufferUsage);
+	//return (m_bufferUsage > m_buffersize) ? 0 : (m_buffersize - m_bufferUsage);
+	uint32_t nbytes = m_queue[qIndex]->GetNBytes();
+	return (nbytes > m_buffersize) ? 0 : (m_buffersize - nbytes);
+};
+
+uint32_t
+QbbNetDevice::GetTxAvailable(const flowid& f) const
+{
+	return GetTxAvailable(Hash(f) % qCnt);
 };
 
 void
@@ -341,6 +435,38 @@ QbbNetDevice::DisconnectWithoutContext(const CallbackBase& callback)
 	NS_LOG_LOGIC("callback list of size " << m_sendCb.size());
 	m_sendCb.DisconnectWithoutContext(callback);
 	NS_LOG_LOGIC("callback list size is now " << m_sendCb.size());
+};
+
+int32_t
+QbbNetDevice::PrintStatus(std::ostream& os)
+{
+	os << "lastQ=" << m_lastQ;
+	for (unsigned i=0; i<qCnt; ++i) {
+		os << " " << (m_paused[i]?"q":"Q") << "[" << i << "]=" << m_queue[i]->GetNPackets();
+	};
+	os << std::endl << "Size:";
+	uint32_t sum = 0;
+	for (unsigned i=0; i<qCnt; ++i) {
+		os << " " << (m_paused[i]?"q":"Q") << "[" << i << "]=" << m_queue[i]->GetNBytes();
+		sum += m_queue[i]->GetNBytes();
+	};
+#if 0
+	os << " sum=" << sum << std::endl << "RxStat:";
+	sum = 0;
+	for (unsigned i=0; i<qCnt; ++i) {
+		os << " " << (m_paused[i]?"q":"Q") << "[" << i << "]=" << m_queue[i]->GetTotalReceivedBytes();
+		sum += m_queue[i]->GetTotalReceivedBytes();
+	};
+	os << " sum=" << sum << std::endl << "TxStat:";
+	sum = 0;
+	for (unsigned i=0; i<qCnt; ++i) {
+		os << " " << (m_paused[i]?"q":"Q") << "[" << i << "]=" << m_queue[i]->GetTotalSentBytes();
+		sum += m_queue[i]->GetTotalSentBytes();
+		m_queue[i]->ResetStatistics();
+	};
+#endif
+	os << " sum=" << sum << std::endl;
+	return sum;
 };
 
 } // namespace ns3

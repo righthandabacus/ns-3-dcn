@@ -28,19 +28,19 @@
 #include "ns3/data-rate.h"
 #include "ns3/pointer.h"
 #include "ns3/double.h"
+#include "ns3/ipv4.h"
 #include "ns3/ipv4-header.h"
 #include "ns3/simulator.h"
 #include "ns3/rp-net-device.h"
 #include "ns3/cn-header.h"
 #include "ns3/queue.h"
 #include "ns3/random-variable.h"
+#include "ns3/ipv4-routing-protocol.h"
+#include "ns3/callback.h"
 
 NS_LOG_COMPONENT_DEFINE ("RpNetDevice");
 
 namespace ns3 {
-
-const unsigned TIMER_PERIOD=5;
-const unsigned FAST_RECOVERY_TH=5;
 
 NS_OBJECT_ENSURE_REGISTERED (RpNetDevice);
 
@@ -48,7 +48,7 @@ const TypeId&
 RpNetDevice::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::RpNetDevice")
-    .SetParent<QbbNetDevice> ()
+    .SetParent<CpNetDevice> ()
     .AddConstructor<RpNetDevice> ()
     .AddAttribute ("GD",
                    "Control gain parameter which determines the level of rate decrease",
@@ -72,14 +72,24 @@ RpNetDevice::GetTypeId (void)
                    MakeUintegerChecker<uint32_t> ())
     .AddAttribute ("RateAI",
                    "Rate increment unit in AI period",
-                   DataRateValue (DataRate ("1Mb/s")),
+                   DataRateValue (DataRate ("5Mb/s")),
                    MakeDataRateAccessor (&RpNetDevice::m_rai),
                    MakeDataRateChecker ())
     .AddAttribute ("RateHAI",
                    "Rate increment unit in hyperactive AI period",
-                   DataRateValue (DataRate ("5Mb/s")),
+                   DataRateValue (DataRate ("25Mb/s")),
                    MakeDataRateAccessor (&RpNetDevice::m_rhai),
                    MakeDataRateChecker ())
+    .AddAttribute ("TimerPeriod",
+                   "Period (in seconds) of a rate increase cycle",
+                   DoubleValue (0.01),
+                   MakeDoubleAccessor (&RpNetDevice::m_timeperiod),
+                   MakeDoubleChecker<double> ())
+    .AddAttribute ("FastRecThresh",
+                   "Period (in seconds) of a rate increase cycle",
+                   UintegerValue(5),
+                   MakeUintegerAccessor (&RpNetDevice::m_fastthresh),
+                   MakeUintegerChecker<uint32_t> ())
     ;
   return tid;
 }
@@ -107,25 +117,31 @@ RpNetDevice::Receive (Ptr<Packet> packet)
 	ProcessHeader(p, protocol);
 	Ipv4Header ipv4h;
 	p->PeekHeader(ipv4h);
+	Ipv4Address dAddr = ipv4h.GetDestination();
+	Ipv4Address myAddr = m_node->GetObject<Ipv4>()->GetAddress(m_ifIndex,0).GetLocal();
 
-	if (ipv4h.GetProtocol() <= 0x7F) {
-		// Short-cut for performance reasons
-		PointToPointNetDevice::Receive(packet);
-	} else if (ipv4h.GetProtocol() != 0xFF) {
-		// Not CN packet, let parent class handle it
+	if (ipv4h.GetProtocol() != 0xFF || dAddr != myAddr) {
+		// Not a CN packet for me, let parent class handle it
 		QbbNetDevice::Receive(packet);
 	} else {
-		// This is a Congestion signal
+		// This is a Congestion signal for me
 		// Firstly, hit the trace hooks
 		m_snifferTrace (packet);
 		m_promiscSnifferTrace (packet);
 		m_phyRxEndTrace (packet);
 		m_macRxTrace(p);
-		return;
 
 		// Then, extract data from the congestion packet.
 		// We assume, without verify, the packet is destinated to me
 		p->RemoveHeader(ipv4h);
+
+		// Then, call route update function to handle reroute
+		m_node->GetObject<Ipv4>()->GetRoutingProtocol()->RouteInput (p, ipv4h, 0,
+			MakeNullCallback<void, Ptr<Ipv4Route>, Ptr<const Packet>, const Ipv4Header&>(),
+			MakeNullCallback<void, Ptr<Ipv4MulticastRoute>, Ptr<const Packet>, const Ipv4Header&>(),
+			MakeNullCallback<void, Ptr<const Packet>, const Ipv4Header&, unsigned>(),
+			MakeNullCallback<void, Ptr<const Packet>, const Ipv4Header&, Socket::SocketErrno>() );
+
 		CnHeader cnHead;
 		p->RemoveHeader(cnHead);
 		flowid fid = cnHead.GetFlow();
@@ -139,12 +155,12 @@ RpNetDevice::Receive (Ptr<Packet> packet)
 			m_targetRate[qIndex] = m_rate[qIndex];
 		};
 		m_timeCount[qIndex] = m_incCount[qIndex] = 0;
-		double dec = std::max(m_minDec, 1-m_gd*cnHead.GetQfb());
+		double dec = std::max(1-m_minDec, 1-m_gd*cnHead.GetQfb());
 		m_rate[qIndex] = std::max(m_minRate, m_rate[qIndex] * dec);
 		NS_LOG_INFO("Rate for flow "<< fid <<" set from "<< m_targetRate[qIndex]
 						<<" to "<< m_rate[qIndex] <<", txCount="<< m_txBytes[qIndex]);
 		// Reset timer
-		m_timer[qIndex] = Simulator::Now() + Seconds(TIMER_PERIOD);
+		m_timer[qIndex] = Simulator::Now() + Seconds(m_timeperiod);
 	};
 }
 
@@ -176,7 +192,7 @@ RpNetDevice::DequeueAndTransmit()
 		if (m_nextAvail[qIndex].GetTimeStep() > Simulator::Now().GetTimeStep()) continue;
 		// Do the water filling method to find the credits due
 		uint32_t pktSize = m_queue[qIndex]->Peek()->GetSize();
-		NS_LOG_INFO("pktSize=" << pktSize << ", credits on queue " << qIndex << " is " << m_credits[qIndex]);
+		NS_LOG_LOGIC("pktSize=" << pktSize << ", credits on queue " << qIndex << " is " << m_credits[qIndex]);
 		double due = std::max(0.0, m_bps/m_rate[qIndex] * (pktSize - m_credits[qIndex]));
 		if (due < creditsDue) {
 			creditsDue = due;
@@ -216,7 +232,7 @@ RpNetDevice::DequeueAndTransmit()
 		m_credits[qIndex] = 0;
 		m_lastQ = qIndex;
 		m_bufferUsage -= packet->GetSize();
-		uint32_t avail = GetTxAvailable();
+		uint32_t avail = GetTxAvailable(qIndex);
 		NS_LOG_LOGIC("this=" << this << ", m_sendCb size=" << m_sendCb.size());
 		m_txMachineState = BUSY;	// prevent simultaneous call during callback
 		if (avail) m_sendCb(this, avail);
@@ -224,7 +240,7 @@ RpNetDevice::DequeueAndTransmit()
 		// Update state variables if necessary
 		if (m_rate[qIndex] == m_bps) continue;
 		m_txBytes[qIndex] -= packet->GetSize();
-		NS_LOG_INFO("txCount for flow "<< qIndex <<" is "<< m_txBytes[qIndex]);
+		NS_LOG_LOGIC("txCount for flow "<< qIndex <<" is "<< m_txBytes[qIndex]);
 		Time nextSend = m_tInterframeGap + Seconds(m_bps.CalculateTxTime(creditsDue));
 		m_nextAvail[qIndex] = Simulator::Now() + nextSend;
 		NS_LOG_LOGIC("Dequeued from queue "<< qIndex <<" of rate "<< m_rate[qIndex]
@@ -232,12 +248,12 @@ RpNetDevice::DequeueAndTransmit()
 		// If we have sent enough bytes from this queue, increase the rate
 		while (m_timer[qIndex] <= Simulator::Now()) {
 			m_timeCount[qIndex] ++;
-			m_timer[qIndex] += Seconds(UniformVariable(0.85,1.15).GetValue() * ((m_timeCount[qIndex]>FAST_RECOVERY_TH)?0.5:1) * TIMER_PERIOD);
+			m_timer[qIndex] += Seconds(UniformVariable(0.85,1.15).GetValue() * ((m_timeCount[qIndex] > m_fastthresh)?0.5:1) * m_timeperiod);
 			RateIncrease(qIndex);
 		};
 		if (m_txBytes[qIndex] < 0) {
 			m_incCount[qIndex] ++;
-			m_txBytes[qIndex] = UniformVariable(0.85,1.15).GetValue() * m_bc * ((m_incCount[qIndex]>FAST_RECOVERY_TH)?0.5:1);
+			m_txBytes[qIndex] = UniformVariable(0.85,1.15).GetValue() * m_bc * ((m_incCount[qIndex] > m_fastthresh)?0.5:1);
 			RateIncrease(qIndex);
 		};
 	};
@@ -254,9 +270,9 @@ RpNetDevice::RateIncrease(unsigned qIndex)
 	// Cf: The self_increase(qIndex) function in the pseudocode v2.2
 	uint32_t minCount = std::min(m_incCount[qIndex], m_timeCount[qIndex]);
 	DataRate increment = 0;
-	if (minCount > FAST_RECOVERY_TH) {
-		increment = m_rhai * (minCount - FAST_RECOVERY_TH);
-	} else if (std::max(m_incCount[qIndex], m_timeCount[qIndex]) > FAST_RECOVERY_TH) {
+	if (minCount > m_fastthresh) {
+		increment = m_rhai * (minCount - m_fastthresh);
+	} else if (std::max(m_incCount[qIndex], m_timeCount[qIndex]) > m_fastthresh) {
 		increment = m_rai;
 	};
 	if ((m_incCount[qIndex]==1 || m_timeCount[qIndex]==1) && m_targetRate[qIndex] > 10*m_rate[qIndex]) {

@@ -44,8 +44,10 @@ Queue::GetTypeId (void)
 Queue::Queue() : 
   m_nBytes(0), 
   m_nTotalReceivedBytes(0),
+  m_nTotalSentBytes(0),
   m_nPackets(0), 
   m_nTotalReceivedPackets(0),
+  m_nTotalSentPackets(0),
   m_nTotalDroppedBytes(0),
   m_nTotalDroppedPackets(0)
 {
@@ -71,6 +73,8 @@ Queue::Enqueue (Ptr<Packet> p)
     {
       m_nBytes += p->GetSize ();
       m_nPackets++;
+      m_nTotalReceivedBytes += p->GetSize();
+      m_nTotalReceivedPackets++;
     }
   return retval;
 }
@@ -89,6 +93,8 @@ Queue::Dequeue (void)
 
       m_nBytes -= packet->GetSize ();
       m_nPackets--;
+      m_nTotalSentBytes += packet->GetSize();
+      m_nTotalSentPackets++;
 
       NS_LOG_LOGIC("m_traceDequeue (packet)");
 
@@ -156,6 +162,22 @@ Queue::GetTotalReceivedPackets (void) const
 }
 
 uint32_t
+Queue::GetTotalSentBytes (void) const
+{
+  NS_LOG_FUNCTION_NOARGS ();
+  NS_LOG_LOGIC("returns " << m_nTotalSentBytes);
+  return m_nTotalSentBytes;
+}
+
+uint32_t
+Queue::GetTotalSentPackets (void) const
+{
+  NS_LOG_FUNCTION_NOARGS ();
+  NS_LOG_LOGIC ("returns " << m_nTotalSentPackets);
+  return m_nTotalSentPackets;
+}
+
+uint32_t
 Queue:: GetTotalDroppedBytes (void) const
 {
   NS_LOG_FUNCTION_NOARGS ();
@@ -177,6 +199,8 @@ Queue::ResetStatistics (void)
   NS_LOG_FUNCTION_NOARGS ();
   m_nTotalReceivedBytes = 0;
   m_nTotalReceivedPackets = 0;
+  m_nTotalSentBytes = 0;
+  m_nTotalSentPackets = 0;
   m_nTotalDroppedBytes = 0;
   m_nTotalDroppedPackets = 0;
 }

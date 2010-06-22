@@ -106,6 +106,7 @@ CpNetDevice::Send(Ptr<Packet> packet, const Address &dest, uint16_t protocolNumb
 		head.SetSource(myAddr);
 		head.SetProtocol(0xFF);
 		head.SetTtl(64);
+		head.SetTos(ipv4h.GetTos());
 		head.SetPayloadSize(p->GetSize());
 		head.SetIdentification(UniformVariable(0,65536).GetValue());
 		p->AddHeader(head);

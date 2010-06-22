@@ -22,7 +22,7 @@
 #ifndef RP_NET_DEVICE_H
 #define RP_NET_DEVICE_H
 
-#include "ns3/qbb-net-device.h"
+#include "ns3/cp-net-device.h"
 
 namespace ns3 {
 
@@ -38,7 +38,7 @@ class FlowTable;
  * as identified by the congestion notification signal, and
  * releasing the throttle when the signal is not present.
  */
-class RpNetDevice : public QbbNetDevice
+class RpNetDevice : public CpNetDevice
 {
 public:
   static const TypeId& GetTypeId (void);
@@ -59,6 +59,8 @@ protected:
   DataRate m_rai;		//< Rate of additive increase
   DataRate m_rhai;		//< Rate of hyper-additive increase
   EventId  m_nextSend;		//< The next send event
+  double   m_timeperiod;	//< Period of increasing rate
+  uint32_t m_fastthresh;	//< Threshold of num of increase cycles in fast recovery
   /* State variable for rate-limited queues */
   DataRate m_targetRate[qCnt];	//< Target rate
   DataRate m_rate[qCnt];	//< Current rate

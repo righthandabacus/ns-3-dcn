@@ -134,6 +134,7 @@ protected:
   bool m_mtuDiscover;
   bool m_blocking;
   Callback<void, Ipv4Address,uint8_t,uint8_t,uint8_t,uint32_t> m_icmpCallback;
+  flowid m_flowid;
 };
 
 }//namespace ns3

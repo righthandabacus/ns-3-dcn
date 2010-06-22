@@ -285,8 +285,8 @@ FatTreeHelper::InstallCpRp (Ptr<Node> a, Ptr<Node> b)
 	NetDeviceContainer container;
 
 	Ptr<CpNetDevice> devA = m_cpFactory.Create<CpNetDevice> ();
-	devA->SetAttribute("QueueEq",UintegerValue(100));
-	devA->SetAttribute("QbbThreshold",UintegerValue(500));
+	//devA->SetAttribute("QueueEq",UintegerValue(100));
+	//devA->SetAttribute("QbbThreshold",UintegerValue(500));
 	devA->SetAddress (Mac48Address::Allocate ());
 	a->AddDevice (devA);
 	Ptr<RpNetDevice> devB = m_rpFactory.Create<RpNetDevice> ();
@@ -307,13 +307,13 @@ FatTreeHelper::InstallCpCp (Ptr<Node> a, Ptr<Node> b)
 	NetDeviceContainer container;
 
 	Ptr<CpNetDevice> devA = m_cpFactory.Create<CpNetDevice> ();
-	devA->SetAttribute("QueueEq",UintegerValue(100));
-	devA->SetAttribute("QbbThreshold",UintegerValue(500));
+	//devA->SetAttribute("QueueEq",UintegerValue(100));
+	//devA->SetAttribute("QbbThreshold",UintegerValue(500));
 	devA->SetAddress (Mac48Address::Allocate ());
 	a->AddDevice (devA);
 	Ptr<CpNetDevice> devB = m_cpFactory.Create<CpNetDevice> ();
-	devB->SetAttribute("QueueEq",UintegerValue(100));
-	devB->SetAttribute("QbbThreshold",UintegerValue(500));
+	//devB->SetAttribute("QueueEq",UintegerValue(100));
+	//devB->SetAttribute("QbbThreshold",UintegerValue(500));
 	devB->SetAddress (Mac48Address::Allocate ());
 	b->AddDevice (devB);
 	Ptr<PointToPointChannel> channel = m_channelFactory.Create<PointToPointChannel> ();

@@ -405,8 +405,13 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 		if (m_blocking) {
 			Ptr<NetDevice> nd = route->GetOutputDevice();
 			Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
-			if (qbb != 0 && qbb->GetTxAvailable() < p->GetSize()) {
-				NS_LOG_LOGIC("NetDevice buffer full. Not sending.");
+			if (m_flowid.GetSAddr() == 0) {
+				m_flowid = flowid(m_endPoint->GetLocalAddress().Get(), dest.Get(),
+						UdpL4Protocol::PROT_NUMBER,
+						m_endPoint->GetLocalPort(), port);
+			};
+			if (qbb != 0 && qbb->GetTxAvailable(m_flowid) < p->GetSize()) {
+				NS_LOG_INFO("NetDevice buffer full. Not sending.");
 				qbb->ConnectWithoutContext(
 						MakeCallback(&UdpSocketImpl::DeviceUnblocked, this));
 				m_errno = ERROR_MSGSIZE;
@@ -437,8 +442,13 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 		if (m_blocking) {
 			Ptr<NetDevice> nd = route->GetOutputDevice();
 			Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
-			if (qbb != 0 && qbb->GetTxAvailable() < p->GetSize()) {
-				NS_LOG_LOGIC("NetDevice buffer full. Not sending.");
+			if (m_flowid.GetSAddr() == 0) {
+				m_flowid = flowid(header.GetSource().Get(), dest.Get(),
+						UdpL4Protocol::PROT_NUMBER,
+						m_endPoint->GetLocalPort(), port);
+			};
+			if (qbb != 0 && qbb->GetTxAvailable(m_flowid) < p->GetSize()) {
+				NS_LOG_INFO("NetDevice buffer full. Not sending.");
 				qbb->ConnectWithoutContext(
 						MakeCallback(&UdpSocketImpl::DeviceUnblocked, this));
 				m_errno = ERROR_MSGSIZE;
@@ -461,11 +471,12 @@ UdpSocketImpl::DoSendTo (Ptr<Packet> p, Ipv4Address dest, uint16_t port)
 void
 UdpSocketImpl::DeviceUnblocked(Ptr<NetDevice> nd, uint32_t avail)
 {
-	avail = nd->GetObject<QbbNetDevice>()->GetTxAvailable();
+	avail = nd->GetObject<QbbNetDevice>()->GetTxAvailable(m_flowid);
 	Ptr<QbbNetDevice> qbb = nd->GetObject<QbbNetDevice>();
 	if (avail) {
 		Simulator::ScheduleNow(&UdpSocketImpl::CancelNetDeviceCallback, this, qbb);
 		NotifySend (avail);
+		NS_LOG_INFO("NetDevice notified of available buffer.");
 	};
 };
 

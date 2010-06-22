@@ -45,26 +45,30 @@ int main (int argc, char *argv[])
 	LogComponentEnableAll(LOG_PREFIX_FUNC);
 //	LogComponentPrintList();
 
-	uint32_t bc = 50e3;
+	uint32_t bc = 10e3;
 	double tcp=0;
-	bool rr=1;
-	double linkBw = 100e6;		// Link bandwidth in bps
-	double linkDelay = 250e-9;	// Link delay in seconds (5ns = 1m wire)
+	int rr=1;
+	double linkBw = 1e9;		// Link bandwidth in bps
+	double linkDelay = 5e-9;	// Link delay in seconds (5ns = 1m wire)
 	unsigned size = 3;		// Fat tree size
 	double percent = 0.8;		// Percent of bandwidth to use per sending host
-	uint64_t bytes = 5e6;		// Number of bytes to send per flow
-	int maxflow = 10;		// Maximum number of flows per node
+	uint64_t bytes = 0;		// Number of bytes to send per flow
+	int maxflow = 15;		// Maximum number of flows per node
+	int minflow = 5;		// Minimum number of flows per node
 	int pausetime = 250;		// Pause duration in us
 	bool dryrun=0;			// Fake the simulation or not
 	bool cbr=0;			// Use CBR traffic?
 	uint32_t speedup = 1;		// Speedup factor
+	double stoptime = 0;		// Time to stop applications
+	int bb = 100;			// Qbb threshold
+	int qeq = 20;			// QueueEq
 
 	CommandLine cmd;
 	cmd.AddValue("speedup","Speed up factor of 802.1Qau",speedup);
 	cmd.AddValue("bc","BC value of RP device",bc);
 	cmd.AddValue("tcp","Percentage of TCP (1 to 0)",tcp);
 	cmd.AddValue("cbr","Use CBR traffic gen (1 or 0)",cbr);
-	cmd.AddValue("rr","Enable reroute (1 or 0)",rr);
+	cmd.AddValue("rr","Reroute scheme (0=no reroute, 1=random, 2=max prob, 3=biased random)",rr);
 	cmd.AddValue("bw","Link bandwidth",linkBw);
 	cmd.AddValue("delay","Link delay",linkDelay);
 	cmd.AddValue("dryrun","Fake the simulation",dryrun);
@@ -73,14 +77,23 @@ int main (int argc, char *argv[])
 	cmd.AddValue("pc","Percentage of bandwidth to use per sending host",percent);
 	cmd.AddValue("maxflow","Maximum number of flows per node",maxflow);
 	cmd.AddValue("pt","Pause duration in microseconds",pausetime);
+	cmd.AddValue("stop","Time to stop the flows", stoptime);
+	cmd.AddValue("bb","Threshold for Qbb", bb);
+	cmd.AddValue("qeq", "Equilibrium of queue in Qau", qeq);
 	cmd.Parse (argc, argv);
 
 	Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue(1000));
 	Config::SetDefault ("ns3::RpNetDevice::BC", UintegerValue(bc));
 	Config::SetDefault ("ns3::QbbNetDevice::PauseTime", UintegerValue(pausetime));
+	Config::SetDefault ("ns3::QbbNetDevice::QbbThreshold", UintegerValue(bb));
+	Config::SetDefault ("ns3::QbbNetDevice::QbbEnabled", BooleanValue(true));
+	Config::SetDefault ("ns3::QbbNetDevice::BufferSize", UintegerValue(65536));	// 64KiB
 	Config::SetDefault ("ns3::RpNetDevice::MinRate", DataRateValue(DataRate("1Mbps")));
 	Config::SetDefault ("ns3::CpNetDevice::SpeedUp", UintegerValue(speedup));
-	if (!rr) Config::SetDefault ("ns3::HashRouting::EnableReroute", BooleanValue(false));
+	Config::SetDefault ("ns3::CpNetDevice::QueueEq", UintegerValue(qeq));
+	Config::SetDefault ("ns3::HashRouting::RerouteScheme", UintegerValue(rr));
+	Config::SetDefault ("ns3::HashRouting::RerouteThreshold", UintegerValue(2));
+	Config::SetDefault ("ns3::HashRouting::CnLifetime", TimeValue(Seconds(0.01)));
 
 	// Build the fat tree network
 	Ptr<FatTreeHelper> fattree = CreateObject<FatTreeHelper>(size);
@@ -125,10 +138,12 @@ int main (int argc, char *argv[])
 	NS_LOG_INFO ("Create Application.");
 	bool needTcpSink[numHosts];
 	bool needUdpSink[numHosts];
+	bool big = false;
 	for(unsigned i=0; i<numHosts; i++) needTcpSink[i] = needUdpSink[i] = false;
 	for(unsigned src=0; src<numHosts; src++) {
 		// Partition bandwidth into random number of flows
-		for (int flownum = UniformVariable(0,maxflow).GetValue() + 1; flownum > 1; flownum--) {
+		big = !big;
+		for (int flownum = UniformVariable(minflow,maxflow+1).GetValue()*(big?1:10); flownum > 1; flownum--) {
 			partition.push_back(UniformVariable(0,uint64_t(linkBw*percent)).GetValue());
 		};
 		partition.sort();
@@ -169,7 +184,7 @@ int main (int argc, char *argv[])
 				// Use MMPP helper to create an MMPP traffic generator
 				Ptr<RateVector> rateVector = CreateObject<RateVector>();
 				rateVector->push_back(DataRate(1.0*flowsizes.front()));
-				rateVector->push_back(DataRate(2.0*flowsizes.front()));
+				rateVector->push_back(DataRate(1.5*flowsizes.front()));
 				rateVector->push_back(DataRate(0.5*flowsizes.front()));
 				MmppHelper mmpp(socketSpec, Address(InetSocketAddress(addrs[dest], port)));
 				mmpp.SetAttribute ("GenMatrix", PointerValue(generator));
@@ -179,12 +194,12 @@ int main (int argc, char *argv[])
 				app = mmpp.Install(fattree->HostNodes().Get(src));
 			};
 			// Create a flow
-			double desync = UniformVariable(0,1).GetValue();
-			app.Start(Seconds(desync));
+			//double desync = UniformVariable(0,1).GetValue();
+			app.Start(Seconds(0));
 			NS_LOG_INFO((useTcp?"TCP":"UDP") << " flow "<< addrs[src] <<" -> "<< addrs[dest]
 				<<" ("<< src+5*size*size <<" -> "<< dest+5*size*size <<") of rate "
-				<< flowsizes.front()/1e6 <<"Mbps starts at "<< desync <<"s");
-			//app.Stop(Seconds(desync+DURATION));
+				<< flowsizes.front()/1e6 <<"Mbps starts at "<< 0 <<"s");
+			if (stoptime > 0) app.Stop(Seconds(stoptime));
 
 			flowsizes.pop_front();
 		};
@@ -203,17 +218,33 @@ int main (int argc, char *argv[])
 	};
 
 	// Collect packet trace
+	std::cout << std::setprecision(9) << std::fixed;
+	std::cerr << std::setprecision(9) << std::fixed;
+	std::clog << std::setprecision(9) << std::fixed;
 //	PointToPointHelper::EnablePcapAll ("FatTreeSimulation");
 //	std::ofstream ascii;
-//	ascii.open (outputfile);
-//	PointToPointHelper::EnableAsciiAll (ascii);
-	std::cout << std::setprecision(9) << std::fixed;
 	fattree->EnableAsciiAll (std::cout);
 //	LogComponentEnableAll(LOG_LEVEL_ALL);
+	LogComponentDisable("Buffer", LOG_LEVEL_ALL);
+	LogComponentDisable("PacketMetadata", LOG_LEVEL_ALL);
+	LogComponentDisable("ByteTagList", LOG_LEVEL_ALL);
+	LogComponentDisable("Queue", LOG_LEVEL_ALL);
+	LogComponentDisable("MapScheduler", LOG_LEVEL_ALL);
+//	LogComponentEnable("QbbNetDevice", LOG_LEVEL_ALL);
+//	LogComponentEnable("QbbNetDevice", LOG_LEVEL_INFO);
+//	LogComponentEnable("UdpSocketImpl", LOG_LEVEL_INFO);
+//	LogComponentEnable("PointToPointNetDevice", LOG_LEVEL_ALL);
+//	LogComponentEnable("RpNetDevice", LOG_LEVEL_ALL);
+//	LogComponentEnable("CpNetDevice", LOG_LEVEL_ALL);
+//	LogComponentEnable("MmppApplication", LOG_LEVEL_ALL);
+//	LogComponentEnable("TcpSocketImpl", LOG_LEVEL_ALL);
+//	LogComponentEnable("TcpRxBuffer", LOG_LEVEL_ALL);
 
 	// Run the simulation
 	NS_LOG_INFO("Run Simulation.");
-	Simulator::Stop(Seconds(65535));
+	//Simulator::Stop(Seconds(stoptime?2*stoptime:1000));
+	Simulator::Stop(Seconds(stoptime + 0.001));
+//	PrintStat(fattree,&std::clog);
 	if (!dryrun) Simulator::Run ();
 	Simulator::Destroy ();
 	NS_LOG_INFO("Done.");

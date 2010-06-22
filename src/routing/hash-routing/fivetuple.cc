@@ -61,6 +61,17 @@ flowid::flowid(Ptr<Packet> p)
 	NS_LOG_INFO("(" << iph.GetSource() << ":" << sport << " " << (int)proto << " " << iph.GetDestination() << ":" << dport << ") -> " << (*this));
 };
 
+// Retrieve the flow id directly from five tuple
+flowid::flowid(uint32_t saddr, uint32_t daddr, uint8_t proto, uint16_t sport, uint16_t dport)
+{
+	// Set the bits, note the first 12 bit in lo is always zero
+	hi = (static_cast<uint64_t>(saddr) << 32)
+		| static_cast<uint64_t>(daddr);
+	lo = (((static_cast<uint64_t>(proto) << 16)
+		| static_cast<uint64_t>(sport)) << 16 )
+		| static_cast<uint64_t>(dport);
+};
+
 flowid::flowid(char* id)
 {
 	hi = lo = 0;
@@ -151,7 +162,7 @@ void flowid::Print(std::ostream& os) const
 
 flowid::operator char*() const
 {
-	char s[17];
+	static char s[16];
 	return Write(s);
 }
 
@@ -161,7 +172,6 @@ char* flowid::Write(char* s) const
 		s[i] = ((char*)(&hi))[i];
 		s[i+8] = ((char*)(&lo))[i];
 	};
-	s[16] = '\0';
 	return s;
 };
 

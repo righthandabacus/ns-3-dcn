@@ -378,7 +378,7 @@ Ipv4GlobalRouting::DoDispose (void)
 }
 
 Ptr<Ipv4Route>
-Ipv4GlobalRouting::RouteOutput (Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr)
+Ipv4GlobalRouting::RouteOutput (Ptr<Packet> p, Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr)
 {      
 
 //

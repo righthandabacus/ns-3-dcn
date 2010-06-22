@@ -288,7 +288,7 @@ def configure(conf):
     if env['COMPILER_CXX'] == 'g++' and 'CXXFLAGS' not in os.environ:
         if conf.check_compilation_flag('-Wno-error=deprecated-declarations'):
             env.append_value('CXXFLAGS', '-Wno-error=deprecated-declarations')
-        
+
     if Options.options.build_profile == 'debug':
         env.append_value('CXXDEFINES', 'NS3_ASSERT_ENABLE')
         env.append_value('CXXDEFINES', 'NS3_LOG_ENABLE')

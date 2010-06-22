@@ -26,6 +26,7 @@
 #include "ns3/simulator-module.h"
 #include "ns3/node-module.h"
 #include "ns3/helper-module.h"
+#include "ns3/rp-net-device.h"
 
 using namespace ns3;
 
@@ -36,35 +37,59 @@ const uint16_t port = 9;   // Discard port (RFC 863)
 
 std::vector<ApplicationContainer> apps(54);
 
+void PrintStat(Ptr<FatTreeHelper> f, std::ostream* os)
+{
+	uint32_t sum = 0;
+	for (int i=0; i<2*3*3*3; ++i) {
+		*os << "t=" << Simulator::Now().GetSeconds() << " host " << i << std::endl;
+		sum += f->HostNodes().Get(i)->GetDevice(1)->GetObject<QbbNetDevice>()->PrintStatus(*os);
+		break;
+	};
+	for (int i=1; i<=6; ++i) {
+		*os << "t=" << Simulator::Now().GetSeconds() << " edge 0 dev " << i << std::endl;
+		sum += f->EdgeNodes().Get(0)->GetDevice(i)->GetObject<QbbNetDevice>()->PrintStatus(*os);
+	};
+	//*os << "Average Tx=" << sum/(3*3*3*2) << " at t=" << Simulator::Now().GetSeconds() << std::endl;
+	Simulator::Schedule(MilliSeconds(100), &PrintStat, f, os);
+};
+
 int main (int argc, char *argv[])
 {
 	// Turn on logging
-//	LogComponentEnable("SimulationScript", LOG_LEVEL_ALL);
+	LogComponentEnable("SimulationScript", LOG_LEVEL_ALL);
 	LogComponentEnableAll(LOG_PREFIX_TIME);
 	LogComponentEnableAll(LOG_PREFIX_FUNC);
 //	LogComponentPrintList();
 
-	uint32_t bc = 50e3;
+	uint32_t bc = 1e3;		// RpNetDevice byte counter
+	double md = 0.8;		// Min decrease factor in RP rate control
 	double tcp=0;
-	bool rr=1;
-	double linkBw = 100e6;		// Link bandwidth in bps
+	int rr=1;
+	double linkBw = 1e9;		// Link bandwidth in bps
 	double linkDelay = 5e-9;	// Link delay in seconds (5ns = 1m wire)
 	unsigned size = 3;		// Fat tree size
 	double percent = 0.8;		// Percent of bandwidth to use per sending host
 	uint64_t bytes = 0;		// Number of bytes to send per flow
-	int maxflow = 10;		// Maximum number of flows per node
-	int pausetime = 25;		// Pause duration in us
+	int maxflow = 15;		// Maximum number of flows per node
+	int minflow = 5;		// Minimum number of flows per node
+	int pausetime = 250;		// Pause duration in us
 	bool dryrun=0;			// Fake the simulation or not
 	bool cbr=0;			// Use CBR traffic?
 	uint32_t speedup = 1;		// Speedup factor (for 802.1Qau)
-	unsigned stoptime = 0;		// Time to stop applications
+	double stoptime = 0;		// Time to stop applications
+	int bb = 100;			// Qbb threshold
+	int qeq = 20;			// QueueEq
+	int ai = 5;			// RP rate increase unit, in Mbps
 
 	CommandLine cmd;
 	cmd.AddValue("speedup","Speed up factor of 802.1Qau",speedup);
 	cmd.AddValue("bc","BC value of RP device",bc);
+	cmd.AddValue("ai","Rate increase step size in RP device", ai);
+	cmd.AddValue("md","Min dec factor of RP rate control",md);
+	cmd.AddValue("cbr","Use CBR traffic gen (1 or 0)",cbr);
 	cmd.AddValue("tcp","Percentage of TCP traffic (1 to 0)",tcp);
 	cmd.AddValue("cbr","Use CBR traffic gen (1 or 0)",cbr);
-	cmd.AddValue("rr","Enable reroute (1 or 0)",rr);
+	cmd.AddValue("rr","Reroute scheme (0=no reroute, 1=random, 2=max prob, 3=biased random)",rr);
 	cmd.AddValue("bw","Link bandwidth",linkBw);
 	cmd.AddValue("delay","Link delay",linkDelay);
 	cmd.AddValue("dryrun","Fake the simulation",dryrun);
@@ -74,17 +99,26 @@ int main (int argc, char *argv[])
 	cmd.AddValue("maxflow","Maximum number of flows per node",maxflow);
 	cmd.AddValue("pt","Pause duration in microseconds",pausetime);
 	cmd.AddValue("stop","Time to stop the flows", stoptime);
+	cmd.AddValue("bb","Threshold for Qbb", bb);
+	cmd.AddValue("qeq", "Equilibrium of queue in Qau", qeq);
 	cmd.Parse (argc, argv);
 
 	Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue(1000));
 	Config::SetDefault ("ns3::RpNetDevice::BC", UintegerValue(bc));
+	Config::SetDefault ("ns3::RpNetDevice::MinDecFactor", DoubleValue(md));
 	Config::SetDefault ("ns3::QbbNetDevice::PauseTime", UintegerValue(pausetime));
-	Config::SetDefault ("ns3::QbbNetDevice::BufferSize", UintegerValue(131072));	// 128KiB
+	Config::SetDefault ("ns3::QbbNetDevice::QbbThreshold", UintegerValue(bb));
+	Config::SetDefault ("ns3::QbbNetDevice::QbbEnabled", BooleanValue(true));
+	Config::SetDefault ("ns3::QbbNetDevice::BufferSize", UintegerValue(65536));	// 64KiB
 	Config::SetDefault ("ns3::RpNetDevice::MinRate", DataRateValue(DataRate("1Mbps")));
+	Config::SetDefault ("ns3::RpNetDevice::RateAI", DataRateValue(DataRate(ai*1e6)));
+	Config::SetDefault ("ns3::RpNetDevice::RateHAI", DataRateValue(DataRate(ai*5e6)));
 	Config::SetDefault ("ns3::CpNetDevice::SpeedUp", UintegerValue(speedup));
-	Config::SetDefault ("ns3::HashRouting::IntelReroute", BooleanValue(false));
-//	Config::SetDefault ("ns3::HashRouting::RerouteThreshold", UintergerValue(2));
-	Config::SetDefault ("ns3::HashRouting::EnableReroute", BooleanValue(rr != 0));
+	Config::SetDefault ("ns3::CpNetDevice::QueueEq", UintegerValue(qeq));
+	Config::SetDefault ("ns3::HashRouting::RerouteScheme", UintegerValue(rr));
+	Config::SetDefault ("ns3::HashRouting::RerouteThreshold", UintegerValue(2));
+	Config::SetDefault ("ns3::HashRouting::RouteFreezeTime", TimeValue(Seconds(0.0005)));
+	Config::SetDefault ("ns3::HashRouting::CnLifetime", TimeValue(Seconds(0.0005)));
 
 	// Build the fat tree network
 	Ptr<FatTreeHelper> fattree = CreateObject<FatTreeHelper>(size);
@@ -133,7 +167,7 @@ int main (int argc, char *argv[])
 	for(unsigned src=0; src<numHosts; src++) {
 		// Partition bandwidth into random number of flows
 		util[src]=0;
-		for (int flownum = UniformVariable(0,maxflow).GetValue() + 1; flownum > 1; flownum--) {
+		for (int flownum = UniformVariable(minflow,maxflow+1).GetValue(); flownum > 1; flownum--) {
 			partition.push_back(UniformVariable(0,uint64_t(linkBw*percent)).GetValue());
 		};
 		partition.sort();
@@ -228,12 +262,12 @@ int main (int argc, char *argv[])
 				app = mmpp.Install(fattree->HostNodes().Get(src));
 			};
 			// Create a flow
-			double desync = UniformVariable(0,0.1).GetValue();
+			double desync = 0; //UniformVariable(0,0.1).GetValue();
 			app.Start(Seconds(desync));
 			NS_LOG_INFO((useTcp?"TCP":"UDP") << " flow "<< addrs[src] <<" -> "<< addrs[*destIt]
 				<<" ("<< src+5*size*size <<" -> "<< *destIt+5*size*size <<") of rate "
 				<< *sizeIt/1e6 <<"Mbps starts at "<< desync <<"s");
-			if (stoptime) app.Stop(Seconds(stoptime));
+			if (stoptime > 0) app.Stop(Seconds(stoptime));
 
 			++sizeIt;
 			++destIt;
@@ -267,6 +301,8 @@ int main (int argc, char *argv[])
 	LogComponentDisable("Queue", LOG_LEVEL_ALL);
 	LogComponentDisable("MapScheduler", LOG_LEVEL_ALL);
 //	LogComponentEnable("QbbNetDevice", LOG_LEVEL_ALL);
+//	LogComponentEnable("HashRouting", LOG_LEVEL_INFO);
+//	LogComponentEnable("UdpSocketImpl", LOG_LEVEL_INFO);
 //	LogComponentEnable("PointToPointNetDevice", LOG_LEVEL_ALL);
 //	LogComponentEnable("RpNetDevice", LOG_LEVEL_ALL);
 //	LogComponentEnable("CpNetDevice", LOG_LEVEL_ALL);
@@ -276,7 +312,9 @@ int main (int argc, char *argv[])
 
 	// Run the simulation
 	NS_LOG_INFO("Run Simulation.");
-	Simulator::Stop(Seconds(stoptime?2*stoptime:1000));
+	//Simulator::Stop(Seconds(stoptime?2*stoptime:1000));
+	Simulator::Stop(Seconds(stoptime + 0.001));
+//	PrintStat(fattree,&std::clog);
 	if (!dryrun) Simulator::Run ();
 	Simulator::Destroy ();
 	NS_LOG_INFO("Done.");

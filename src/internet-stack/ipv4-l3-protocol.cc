@@ -583,6 +583,11 @@ Ipv4L3Protocol::Send (Ptr<Packet> packet,
     {
       NS_LOG_LOGIC ("Ipv4L3Protocol::Send case 3:  passed in with route");
       ipHeader = BuildHeader (source, destination, protocol, packet->GetSize (), ttl, mayFragment);
+      // For SPAIN routing: Recheck the route and let the routing reset the TOS field of IPv4 header
+      ipHeader.SetTos(255);	// magic number to ask RouteOutput to write down the TOS
+      Socket::SocketErrno errno_;
+      route = m_node->GetObject<Ipv4>()->GetRoutingProtocol()->RouteOutput (packet, ipHeader, 0, errno_); 
+      // end
       int32_t interface = GetInterfaceForDevice (route->GetOutputDevice ());
       m_sendOutgoingTrace (ipHeader, packet, interface);
       SendRealOut (route, packet, ipHeader);

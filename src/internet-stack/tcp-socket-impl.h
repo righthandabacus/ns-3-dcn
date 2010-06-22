@@ -198,6 +198,8 @@ protected:	// TCP variables
 	// Window management
 	uint32_t               m_segmentSize;  //SegmentSize
 	uint32_t               m_rxWindowSize; //Flow control window at remote side
+
+	flowid m_flowid;
 };
 
 }//namespace ns3

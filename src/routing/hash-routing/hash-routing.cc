@@ -23,6 +23,7 @@
 #include "ns3/object.h"
 #include "ns3/packet.h"
 #include "ns3/net-device.h"
+#include "ns3/qbb-net-device.h"
 #include "ns3/ipv4-route.h"
 #include "ns3/ipv4-routing-table-entry.h"
 #include "hash-routing.h"
@@ -61,25 +62,25 @@ HashRouting::GetTypeId (void)
 { 
   static TypeId tid = TypeId ("ns3::HashRouting")
     .SetParent<Ipv4RoutingProtocol> ()
-    .AddAttribute ("EnableReroute",
-                   "Enable rerouting upon congestion",
-                   BooleanValue (true),
-                   MakeBooleanAccessor (&HashRouting::m_enableRR),
-                   MakeBooleanChecker ())
-    .AddAttribute ("IntelReroute",
-                   "Enable intelligent reroute decision base on CN history",
-                   BooleanValue (true),
-                   MakeBooleanAccessor (&HashRouting::m_intelRR),
-                   MakeBooleanChecker ())
+    .AddAttribute ("RerouteScheme",
+                   "Reroute scheme to use: 0=no reroute, 1=random, 2=best, 3=biased random",
+                   UintegerValue(1),
+                   MakeUintegerAccessor (&HashRouting::m_RR),
+                   MakeUintegerChecker<uint32_t> ())
     .AddAttribute ("RerouteThreshold",
                    "Number of congestion signal to be seen before reroute triggered",
-                   UintegerValue (3),
+                   UintegerValue (2),
                    MakeUintegerAccessor (&HashRouting::m_rrThresh),
                    MakeUintegerChecker<uint32_t> ())
     .AddAttribute ("CnLifetime",
                    "Lifetime for a congestion signal record",
-                   TimeValue (Seconds (3)),
+                   TimeValue (Seconds (0.1)),
                    MakeTimeAccessor (&HashRouting::m_lifetime),
+                   MakeTimeChecker ())
+    .AddAttribute ("RouteFreezeTime",
+                   "Time to freeze a route after a reroute to prevent too frequent rerouting",
+                   TimeValue (Seconds (0)),
+                   MakeTimeAccessor (&HashRouting::m_freeze),
                    MakeTimeChecker ())
     ;
   return tid;
@@ -143,7 +144,7 @@ HashRouting::Lookup (flowid fid)
 }
 
 Ptr<Ipv4Route>
-HashRouting::RouteOutput (Ptr<Packet> p, const Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr)
+HashRouting::RouteOutput (Ptr<Packet> p, Ipv4Header &header, Ptr<NetDevice> oif, Socket::SocketErrno &sockerr)
 {      
 	// Hash-routing is for unicast destination only
 	Ipv4Address a = header.GetDestination();
@@ -182,7 +183,7 @@ HashRouting::RouteInput  (Ptr<const Packet> p, const Ipv4Header &header, Ptr<con
 	Ipv4Address a = header.GetDestination();
 
 	// Congestion signal processing
-	if (header.GetProtocol() == 0xFF && m_enableRR && IsEdge(m_ipv4->GetAddress(1,0).GetLocal())) {
+	if (header.GetProtocol() == 0xFF && m_RR && IsEdge(m_ipv4->GetAddress(1,0).GetLocal())) {
 		// We are routing a congestion control signal at an edge switch
 		CnHeader cnh;
 		p->PeekHeader(cnh);
@@ -342,20 +343,23 @@ HashRouting::NeedReroute(const flowid& fid, uint32_t cp)
 	// Linear search the congestion record table
 	CongRecordTable::iterator i = m_congRecord.begin();
 	while (i != m_congRecord.end()) {
-		if ((*i)->last + m_lifetime < Simulator::Now()) {
+		if ((*i)->cn.front()->time + m_lifetime < Simulator::Now()) {
 			// Erase expired entry
 			i = m_congRecord.erase(i);
 			continue;
 		};
 		if ((*i)->fid == fid) {
-			// If a record is found increase the count and check if
-			// threshold is met
-			(*i)->count++;
-			(*i)->last = Simulator::Now();
-			if (m_intelRR) (*i)->congPoints.insert(cp);
-			NS_LOG_LOGIC("Flow "<< fid <<" set with count "<< (*i)->count <<", thresh="<< m_rrThresh);
-			if ((*i)->count >= m_rrThresh) {
-				(*i)->count = 0;
+			// If a record is found, insert the CP into the record and erase expired entries.
+			// Then check if threshold is met.
+			(*i)->cn.push_front(Create<CnRec>(cp));
+			while((*i)->cn.back()->time + m_lifetime < Simulator::Now()) {
+				(*i)->cn.pop_back();
+				if ((*i)->zero > 0) { --(*i)->zero; };
+			};
+			NS_LOG_INFO("Flow "<< fid <<" has "<< (*i)->cn.size() <<" CNs, thresh="<< m_rrThresh << ", CP=" << std::hex << cp << std::dec);
+			if ((*i)->cn.size() >= m_rrThresh + (*i)->zero) {
+				// Next reroute triggered at (*i)->cn.size() + m_rrThresh
+				(*i)->zero = (*i)->cn.size();
 				return true;
 			} else {
 				return false;
@@ -363,41 +367,51 @@ HashRouting::NeedReroute(const flowid& fid, uint32_t cp)
 		};
 		i++;
 	};
-	NS_LOG_LOGIC("Flow "<< fid <<" not found. Create new record.");
+	NS_LOG_INFO("Flow "<< fid <<" not found. Create new record. CP=" << std::hex << cp << std::dec);
 	// The current flow is not on the congestion record table, add to it
-	Ptr<CongRecord> rec = Create<CongRecord>(fid, Simulator::Now(), 1);
-	if (m_intelRR) rec->congPoints.insert(cp);
+	Ptr<CongRecord> rec = Create<CongRecord>(fid);
+	rec->cn.push_front(Create<CnRec>(cp));
 	m_congRecord.push_back(rec);
 	return false;
 }
 
 uint32_t
-HashRouting::IntelRoute(const flowid& fid)
+HashRouting::DoReroute(const flowid& fid, uint32_t oldPort)
 {
-	// Select the least-likely congested port according to history
 	uint32_t daddr = fid.GetDAddr();
 	const unsigned N = (m_ipv4->GetNInterfaces() - 1)/2;
 	const unsigned d_st = HostAddrToSubtree(daddr);
 	const unsigned d_sw = HostAddrToEdge(daddr);
-	unsigned s_pt = N;
-	unsigned newPort = N;
-	double prob = 0;
 	std::set<uint32_t> cp;
-	for (CongRecordTable::iterator i = m_congRecord.begin();
-		i != m_congRecord.end(); i++) {
+	std::vector<double> problist;
+	NS_ASSERT(oldPort > N);
+	// Collect information from the congestion record table
+	CongRecordTable::iterator i = m_congRecord.begin();
+	while (i != m_congRecord.end()) {
 		// Kill all expired record
-		if ((*i)->last + m_lifetime < Simulator::Now()) {
+		if ((*i)->cn.front()->time + m_lifetime < Simulator::Now()) {
 			i = m_congRecord.erase(i);
 			continue;
 		};
-		// Make the union of all congPoints sets into cp
-		for (std::set<uint32_t>::iterator j = (*i)->congPoints.begin();
-			j != (*i)->congPoints.end(); j++) {
-			cp.insert(*j);
+		while((*i)->cn.back()->time + m_lifetime < Simulator::Now()) {
+			(*i)->cn.pop_back();
+			if ((*i)->zero > 0) { --(*i)->zero; };
 		};
+		// Honours only the information of the same priority
+		if (QbbNetDevice::Hash((*i)->fid) % QbbNetDevice::qCnt == QbbNetDevice::Hash(fid) % QbbNetDevice::qCnt) {
+			// Make the union of all congPoints sets into cp
+			for (std::list<Ptr<CnRec> >::iterator j = (*i)->cn.begin(); j != (*i)->cn.end(); j++) {
+				cp.insert((*j)->cp);
+			};
+		};
+		// Check next;
+		++i;
 	};
-	while (s_pt < m_ipv4->GetNInterfaces()) {
+	// Compute congestion probability for each output port
+	for (unsigned s_pt=N+1 ; s_pt < m_ipv4->GetNInterfaces(); ++s_pt) {
+		// Setup counters to count number of congested switch at different position
 		int edgeUp = 0, aggrUp = 0, coreDn = 0, aggrDn = 0;
+		// For each known congested switches, put them into categories
 		for (std::set<uint32_t>::iterator i = cp.begin(); i != cp.end(); i++) {
 			if ((*i & 0x00010300) == 0x00000300) {
 				if (s_pt == HostAddrToPort(*i)) {
@@ -420,12 +434,55 @@ HashRouting::IntelRoute(const flowid& fid)
 				};
 			};
 		};
+		// Compute no congestion probability by formula
 		double portProb = (edgeUp?0.0:1.0) * (N - aggrUp) * (N - coreDn) * (aggrDn?0:1) / N / N;
-		if (portProb > prob) {
-			prob = portProb;
-			newPort = s_pt;
-		};
-		s_pt ++;
+		problist.push_back(portProb);
+	};
+	// Find the output port based on probability
+	unsigned newPort = oldPort;
+	double probsum, p, maxprob;
+	switch (m_RR) {
+		case 3:	// Use biased-random approach
+			probsum = 0;
+			for (unsigned i = 0; i < N; ++i) {
+				if (N+i+1 == oldPort) continue;
+				probsum += problist[i];
+			};
+			p = UniformVariable(0,1).GetValue();
+			if (probsum == 0) {
+				// Pick a random port if all of them must congest
+				newPort = N + 1 + int(p*N);
+			} else {
+				// Else, pick a port according to their probability to not congest
+				double runningsum = 0;
+				newPort = 2*N;
+				for (unsigned i = 0; i<N; ++i) {
+					if (N+i+1 == oldPort) continue;
+					runningsum += problist[i] / probsum;
+					if (runningsum < p) {
+						newPort = N+1+i;
+					};
+				};
+			};
+			break;
+		case 2: // Use max no-congestion probability approach
+			// Pick the one with highest no-congestion probability that is different from oldPort
+			maxprob = 0;
+			for (unsigned i = 0; i < N; ++i) {
+				if (N+i+1 == oldPort) continue;
+				if (problist[i] >= maxprob) {
+					newPort = N + i + 1;
+					maxprob = problist[i];
+				};
+			};
+			break;
+		case 1:	// Use random approach
+			while (newPort == oldPort) {
+				newPort = N + 1 + int(UniformVariable(0,N).GetValue());
+			};
+			break;
+		default: // No reroute, leave it as newPort = oldPort
+			break;
 	};
 	return newPort;
 };
@@ -434,19 +491,7 @@ uint32_t
 HashRouting::Reroute(const flowid& fid, uint32_t oldPort)
 {
 	// Compute a new port
-	uint16_t newPort;
-	uint16_t numDownPorts = (m_ipv4->GetNInterfaces()-1)/2;
-	if (! m_intelRR || true /* Allows only random at this moment */ ) {
-		// Randomly pick a new port
-		do {
-			newPort = 1 + static_cast<uint16_t>(UniformVariable(0,numDownPorts).GetValue());
-			if (oldPort > numDownPorts) { // shall be always true as it is the up ports
-				newPort += numDownPorts;
-			};
-		} while (newPort == oldPort);
-	} else {
-		newPort = IntelRoute(fid);
-	};
+	uint16_t newPort = DoReroute(fid, oldPort);
 
 	// Linear search for matching entry in m_flowRouteTable
 	FlowRouteTable::iterator it = m_flowRouteTable.begin();
@@ -458,7 +503,10 @@ HashRouting::Reroute(const flowid& fid, uint32_t oldPort)
 		};
 		if (fid == (*it)->fid) {
 			// Entry found: Change output port
+			if ((*it)->lastreroute + m_freeze >= Simulator::Now()) { return oldPort; };
+			NS_LOG_INFO("Reroute flow " << fid << " from port " << oldPort << " to " << newPort);
 			(*it)->outPort = newPort;
+			(*it)->lastreroute = Simulator::Now();
 			return newPort;
 		};
 		it++;
@@ -466,6 +514,7 @@ HashRouting::Reroute(const flowid& fid, uint32_t oldPort)
 	// Linear search failed, the flow is not in the flow table, create new
 	Ptr<FlowRoute> f = Create<FlowRoute>(fid, Simulator::Now(), newPort);
 	m_flowRouteTable.push_back(f);
+	NS_LOG_INFO("Reroute flow " << fid << " from port " << oldPort << " to " << newPort);
 	return newPort;
 };
 

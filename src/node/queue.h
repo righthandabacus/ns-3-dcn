@@ -91,12 +91,14 @@ public:
    * 
    */
   uint32_t GetTotalReceivedBytes (void) const;
+  uint32_t GetTotalSentBytes (void) const;
   /**
    * \return The total number of packets recieved by this Queue since the
    * simulation began, or since ResetStatistics was called, according to 
    * whichever happened more recently
    */
   uint32_t GetTotalReceivedPackets (void) const;
+  uint32_t GetTotalSentPackets (void) const;
   /**
    * \return The total number of bytes dropped by this Queue since the
    * simulation began, or since ResetStatistics was called, according to 
@@ -156,8 +158,10 @@ private:
 
   uint32_t m_nBytes;
   uint32_t m_nTotalReceivedBytes;
+  uint32_t m_nTotalSentBytes;
   uint32_t m_nPackets;
   uint32_t m_nTotalReceivedPackets;
+  uint32_t m_nTotalSentPackets;
   uint32_t m_nTotalDroppedBytes;
   uint32_t m_nTotalDroppedPackets;
 };
