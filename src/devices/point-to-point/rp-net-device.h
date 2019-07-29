@@ -38,7 +38,7 @@ class FlowTable;
  * as identified by the congestion notification signal, and
  * releasing the throttle when the signal is not present.
  */
-class RpNetDevice : public CpNetDevice
+class RpNetDevice : public QbbNetDevice
 {
 public:
   static const TypeId& GetTypeId (void);

@@ -135,12 +135,14 @@ RpNetDevice::Receive (Ptr<Packet> packet)
 		// We assume, without verify, the packet is destinated to me
 		p->RemoveHeader(ipv4h);
 
+#ifdef ANCS
 		// Then, call route update function to handle reroute
-		m_node->GetObject<Ipv4>()->GetRoutingProtocol()->RouteInput (p, ipv4h, 0,
+		m_node->GetObject<Ipv4>()->GetRoutingProtocol()->RouteInput (p, ipv4h, this,
 			MakeNullCallback<void, Ptr<Ipv4Route>, Ptr<const Packet>, const Ipv4Header&>(),
 			MakeNullCallback<void, Ptr<Ipv4MulticastRoute>, Ptr<const Packet>, const Ipv4Header&>(),
 			MakeNullCallback<void, Ptr<const Packet>, const Ipv4Header&, unsigned>(),
 			MakeNullCallback<void, Ptr<const Packet>, const Ipv4Header&, Socket::SocketErrno>() );
+#endif
 
 		CnHeader cnHead;
 		p->RemoveHeader(cnHead);

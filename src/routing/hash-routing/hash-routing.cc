@@ -1,4 +1,4 @@
-/* -*- Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
+/* -*- mOde: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2008, 2009 Polytechnic Institute of NYU, New York University
  *
@@ -78,7 +78,7 @@ HashRouting::GetTypeId (void)
                    MakeTimeAccessor (&HashRouting::m_lifetime),
                    MakeTimeChecker ())
     .AddAttribute ("RouteFreezeTime",
-                   "Time to freeze a route after a reroute to prevent too frequent rerouting",
+                   "tIME TO freeze a route after a reroute to prevent too frequent rerouting",
                    TimeValue (Seconds (0)),
                    MakeTimeAccessor (&HashRouting::m_freeze),
                    MakeTimeChecker ())
